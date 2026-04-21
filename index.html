@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="theme-color" content="#6366f1"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="نبضة"/>
+<link rel="manifest" href="manifest.json"/>
+<title>نبضة</title>
+<!-- Preconnect for speed -->
+<link rel="preconnect" href="https://unpkg.com"/>
+<link rel="preconnect" href="https://www.gstatic.com"/>
+<link rel="dns-prefetch" href="https://nabda-chat-default-rtdb.firebaseio.com"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:'Segoe UI','Cairo',Tahoma,sans-serif;-webkit-tap-highlight-color:transparent}
+input,textarea,button{font-family:inherit}
+input:focus,textarea:focus{outline:none}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:#6366f144;border-radius:3px}
+.tab{flex:1;padding:10px 4px;border:none;background:transparent;font-size:12px;font-family:inherit;cursor:pointer;border-bottom:2.5px solid transparent;font-weight:600;transition:color .15s,border-color .15s}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.typing span{display:inline-block;width:7px;height:7px;border-radius:50%;margin:0 2px;animation:blink 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.fadein{animation:fadeUp .2s ease}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.slideup{animation:slideUp .25s ease}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+/* Pull to refresh */
+.ptr-spinner{display:flex;align-items:center;justify-content:center;padding:10px;color:#6366f1;font-size:13px;gap:6px}
+/* Story progress */
+@keyframes storyProgress{from{width:0}to{width:100%}}
+.story-bar{height:3px;background:#6366f144;border-radius:2px;overflow:hidden}
+.story-bar-fill{height:100%;background:#fff;border-radius:2px}
+/* Toast */
+@keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0}}
+.toast{animation:toastIn .25s ease}
+.toast.out{animation:toastOut .25s ease forwards}
+/* Spam cooldown */
+@keyframes cooldown{from{width:100%}to{width:0%}}
+/* Swipe hint */
+.msg-item{transition:transform .15s}
+</style>
+</head>
+<body>
+<div id="root"><div style="height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#f0f4ff,#e8eeff);flex-direction:column;gap:14px">
+  <div style="width:64px;height:64px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 8px 24px rgba(99,102,241,.35)">💬</div>
+  <div style="font-size:22px;font-weight:800;color:#6366f1;letter-spacing:-0.5px">نبضة</div>
+  <div style="display:flex;gap:6px;margin-top:4px">${[0,1,2].map(i=>`<div style="width:8px;height:8px;border-radius:50%;background:#6366f1;opacity:${0.3+i*0.35}"></div>`).join("")}</div>
+</div></div>
+
+<!-- Firebase first - async for speed -->
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import{getDatabase,ref,set,get,push,onValue,off,update,remove,serverTimestamp,onDisconnect}from"https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+const cfg={apiKey:"AIzaSyBqRplVWgiZUXkbujiQ-KWNca6dPwC-kOk",authDomain:"nabda-chat.firebaseapp.com",databaseURL:"https://nabda-chat-default-rtdb.firebaseio.com",projectId:"nabda-chat",storageBucket:"nabda-chat.firebasestorage.app",messagingSenderId:"399164736455",appId:"1:399164736455:web:127df9589215b9e8120fe2"};
+const app=initializeApp(cfg);const db=getDatabase(app);
+window.__db=db;window.__fn={ref,set,get,push,onValue,off,update,remove,serverTimestamp,onDisconnect};
+window.__fbReady=true;window.dispatchEvent(new Event('fbReady'));
+</script>
+
+<!-- React from CDN (production) -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const{useState,useRef,useEffect,useCallback,memo,useMemo,useReducer}=React;
+
+// ─── Helpers ───────────────────────────────────────────────
+const uid=()=>Math.random().toString(36).slice(2,10);
+const fmt=ts=>new Date(ts).toLocaleTimeString("ar",{hour:"2-digit",minute:"2-digit"});
+const fmtFull=ts=>{const d=new Date(ts),now=new Date(),diff=now-d;if(diff<60000)return"الآن";if(diff<3600000)return`منذ ${Math.floor(diff/60000)} د`;if(diff<86400000)return fmt(ts);return d.toLocaleDateString("ar");};
+const COLS=["#6366f1","#ec4899","#f59e0b","#10b981","#3b82f6","#8b5cf6","#ef4444","#06b6d4"];
+const uc=n=>n?COLS[n.split("").reduce((a,c)=>a+c.charCodeAt(0),0)%COLS.length]:"#6366f1";
+const ls=(k,fb)=>{try{const v=localStorage.getItem(k);return v!=null?JSON.parse(v):fb;}catch{return fb;}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+
+// ─── Firebase ──────────────────────────────────────────────
+const D=()=>window.__db;const F=()=>window.__fn;
+const dSet=(p,v)=>F().set(F().ref(D(),p),v);
+const dUpd=(p,v)=>F().update(F().ref(D(),p),v);
+const dPush=(p,v)=>F().push(F().ref(D(),p),v);
+const dGet=async p=>{try{const s=await F().get(F().ref(D(),p));return s.exists()?s.val():null;}catch{return null;}};
+const dListen=(p,cb)=>{const r=F().ref(D(),p);F().onValue(r,s=>cb(s.val()));return()=>F().off(r);};
+const dDel=p=>F().remove(F().ref(D(),p));
+
+// ─── Theme ─────────────────────────────────────────────────
+const useTheme=()=>{
+  const[dark,setDark]=useState(()=>{const s=ls("nabda_theme",null);return s!=null?s:window.matchMedia?.("(prefers-color-scheme:dark)").matches;});
+  const toggle=()=>{const nd=!dark;setDark(nd);lsSet("nabda_theme",nd);};
+  return{dark,toggle};
+};
+const T=dark=>({
+  bg:dark?"#0a0a14":"#f0f2f5",card:dark?"#12121e":"#ffffff",card2:dark?"#1a1a2a":"#f8f9fa",
+  border:dark?"#1e1e30":"#e5e7eb",text:dark?"#e0e0f0":"#1f2937",text2:dark?"#888":"#6b7280",
+  text3:dark?"#555":"#9ca3af",inp:dark?"#1a1a2a":"#f3f4f6",inpBorder:dark?"#2a2a3e":"#d1d5db",
+  bubble:dark?"#1e1e2e":"#e5e7eb",topbar:dark?"#12121e":"#ffffff",tabs:dark?"#12121e":"#ffffff",
+});
+
+// ─── Sound ─────────────────────────────────────────────────
+let _ac=null;
+const getAC=()=>{if(!_ac)_ac=new(window.AudioContext||window.webkitAudioContext)();return _ac;};
+const snd=t=>{try{const c=getAC();const o=c.createOscillator();const g=c.createGain();o.connect(g);g.connect(c.destination);
+  if(t==="send"){o.frequency.setValueAtTime(880,c.currentTime);o.frequency.exponentialRampToValueAtTime(660,c.currentTime+0.08);g.gain.setValueAtTime(0.18,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.08);o.start();o.stop(c.currentTime+0.08);}
+  else if(t==="recv"){o.type="sine";o.frequency.setValueAtTime(523,c.currentTime);o.frequency.setValueAtTime(659,c.currentTime+0.1);g.gain.setValueAtTime(0.22,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.25);o.start();o.stop(c.currentTime+0.25);}
+  else if(t==="notif"){o.frequency.setValueAtTime(784,c.currentTime);g.gain.setValueAtTime(0.12,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.3);o.start();o.stop(c.currentTime+0.3);}
+}catch{}};
+
+// ─── Notifications ─────────────────────────────────────────
+const requestNotifPerm=async()=>{if("Notification"in window&&Notification.permission==="default")await Notification.requestPermission();};
+const showNotif=(title,body,onClick)=>{
+  if("Notification"in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"){
+    const n=new Notification(title,{body,icon:"icon.png",badge:"icon.png",tag:title});
+    if(onClick)n.onclick=()=>{window.focus();n.close();onClick();};
+  }
+};
+
+// ─── Toast ─────────────────────────────────────────────────
+let _toastCb=null;
+const toast=(msg,type="info",dur=2800)=>{if(_toastCb)_toastCb({msg,type,dur});};
+
+const ToastHost=()=>{
+  const[items,setItems]=useState([]);
+  useEffect(()=>{_toastCb=({msg,type,dur})=>{const id=uid();setItems(p=>[...p,{id,msg,type}]);setTimeout(()=>setItems(p=>p.filter(x=>x.id!==id)),dur);};return()=>{_toastCb=null;};},[]);
+  if(!items.length)return null;
+  const colors={info:"#6366f1",success:"#22c55e",error:"#ef4444",warn:"#f59e0b"};
+  return<div style={{position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",flexDirection:"column",gap:6,alignItems:"center",pointerEvents:"none"}}>
+    {items.map(it=><div key={it.id} className="toast" style={{background:colors[it.type]||colors.info,color:"#fff",padding:"9px 18px",borderRadius:22,fontSize:13,fontWeight:700,boxShadow:"0 4px 16px rgba(0,0,0,.22)",whiteSpace:"nowrap",maxWidth:"90vw",overflow:"hidden",textOverflow:"ellipsis"}}>{it.msg}</div>)}
+  </div>;
+};
+
+// ─── Avatar ────────────────────────────────────────────────
+const Av=memo(({user,size=36,onClick,ring=false,seen=false,online=false})=>{
+  const name=user?.username||"?";const c=uc(name);
+  const inner=user?.photo
+    ?<img src={user.photo} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",display:"block"}} loading="lazy"/>
+    :<div style={{width:size,height:size,borderRadius:"50%",background:`linear-gradient(135deg,${c}dd,${c}77)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:user?.emoji?size*.5:size*.4,fontWeight:800,color:"#fff",userSelect:"none",flexShrink:0}}>{user?.emoji||name[0]?.toUpperCase()||"?"}</div>;
+  return(
+    <div onClick={onClick} style={{cursor:onClick?"pointer":"default",flexShrink:0,position:"relative",display:"inline-flex"}}>
+      {ring?<div style={{padding:2,borderRadius:"50%",border:`2.5px solid ${seen?"#aaa":"#6366f1"}`,display:"inline-flex"}}>{inner}</div>:inner}
+      {online&&<div style={{position:"absolute",bottom:1,left:1,width:Math.max(8,size*.22),height:Math.max(8,size*.22),background:"#22c55e",borderRadius:"50%",border:"2px solid white",flexShrink:0}}/>}
+    </div>
+  );
+});
+
+// ─── Image Viewer ──────────────────────────────────────────
+const ImgView=({src,onClose})=>(
+  <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.94)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <img src={src} style={{maxWidth:"96vw",maxHeight:"88vh",objectFit:"contain",borderRadius:10}} onClick={e=>e.stopPropagation()}/>
+    <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"rgba(255,255,255,.15)",border:"none",color:"#fff",fontSize:22,cursor:"pointer",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>✕</button>
+  </div>
+);
+
+// ─── Story Viewer (enhanced with progress + swipe) ─────────
+const StoryViewer=({stories,initialUser,users,me,onClose,onDelete,isOnline,fmtFull})=>{
+  const userList=Object.keys(stories).filter(u=>stories[u]&&Object.keys(stories[u]).length>0);
+  const initIdx=Math.max(0,userList.indexOf(initialUser));
+  const[uIdx,setUIdx]=useState(initIdx);
+  const[sIdx,setSIdx]=useState(0);
+  const[progress,setProgress]=useState(0);
+  const timerRef=useRef(null);
+  const dur=5000;
+
+  const curUser=userList[uIdx];
+  const curStories=curUser?Object.entries(stories[curUser]||{}).sort((a,b)=>b[1].ts-a[1].ts):[];
+  const curStory=curStories[sIdx];
+
+  const next=useCallback(()=>{
+    if(sIdx<curStories.length-1){setSIdx(s=>s+1);setProgress(0);}
+    else if(uIdx<userList.length-1){setUIdx(u=>u+1);setSIdx(0);setProgress(0);}
+    else onClose();
+  },[sIdx,curStories.length,uIdx,userList.length,onClose]);
+
+  const prev=()=>{
+    if(sIdx>0){setSIdx(s=>s-1);setProgress(0);}
+    else if(uIdx>0){setUIdx(u=>u-1);setSIdx(0);setProgress(0);}
+  };
+
+  useEffect(()=>{
+    setProgress(0);
+    clearInterval(timerRef.current);
+    const step=100/(dur/50);
+    timerRef.current=setInterval(()=>{
+      setProgress(p=>{if(p>=100){clearInterval(timerRef.current);next();return 0;}return p+step;});
+    },50);
+    return()=>clearInterval(timerRef.current);
+  },[uIdx,sIdx]);
+
+  if(!curStory)return null;
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000",zIndex:999,display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+      {/* Progress bars */}
+      <div style={{display:"flex",gap:3,padding:"10px 12px 6px",position:"absolute",top:0,left:0,right:0,zIndex:2}}>
+        {curStories.map(([sid],i)=>(
+          <div key={sid} className="story-bar" style={{flex:1}}>
+            <div className="story-bar-fill" style={{width:i<sIdx?"100%":i===sIdx?`${progress}%`:"0%",transition:i===sIdx?"none":"none"}}/>
+          </div>
+        ))}
+      </div>
+      {/* Header */}
+      <div style={{position:"absolute",top:22,left:0,right:0,zIndex:2,padding:"0 12px",display:"flex",alignItems:"center",gap:8}}>
+        <Av user={users[curUser]} size={36} online={isOnline(curUser)}/>
+        <div style={{flex:1}}><div style={{color:"#fff",fontWeight:700,fontSize:14}}>{curUser}</div><div style={{color:"#aaa",fontSize:11}}>{fmtFull(curStory[1].ts)}</div></div>
+        {curUser===me&&<button onClick={()=>onDelete(curStory[0])} style={{background:"rgba(239,68,68,.25)",border:"none",color:"#ef4444",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🗑 حذف</button>}
+        <button onClick={onClose} style={{background:"rgba(255,255,255,.1)",border:"none",color:"#fff",borderRadius:"50%",width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+      </div>
+      {/* Story image */}
+      <img src={curStory[1].data} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+      {/* Tap zones */}
+      <div style={{position:"absolute",inset:0,display:"flex"}}>
+        <div style={{flex:1}} onClick={prev}/>
+        <div style={{flex:1}} onClick={next}/>
+      </div>
+    </div>
+  );
+};
+
+// ─── Message Content ───────────────────────────────────────
+const MsgContent=memo(({msg,onImg,th})=>{
+  const[play,setPlay]=useState(false);const ar=useRef(null);
+  if(msg.type==="image")return<img src={msg.data} style={{maxWidth:"100%",maxHeight:220,borderRadius:10,display:"block",cursor:"pointer"}} onClick={()=>onImg?.(msg.data)} loading="lazy"/>;
+  if(msg.type==="video")return<video src={msg.data} controls playsInline style={{maxWidth:"100%",maxHeight:220,borderRadius:10,display:"block"}}/>;
+  if(msg.type==="voice"){
+    const tog=()=>{if(!ar.current)return;if(play){ar.current.pause();setPlay(false);}else{ar.current.play().catch(()=>{});setPlay(true);}};
+    return<div style={{display:"flex",alignItems:"center",gap:10,minWidth:160}}>
+      <audio ref={ar} src={msg.data} onEnded={()=>setPlay(false)}/>
+      <button onClick={tog} style={{width:36,height:36,borderRadius:"50%",border:"none",cursor:"pointer",background:"rgba(255,255,255,.2)",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{play?"⏸":"▶"}</button>
+      <div style={{flex:1}}><div style={{fontSize:12,opacity:.8}}>رسالة صوتية</div>{msg.duration>0&&<div style={{fontSize:10,opacity:.5}}>{msg.duration}ث</div>}</div>
+      <span style={{fontSize:20}}>🎙</span>
+    </div>;
+  }
+  return<span style={{wordBreak:"break-word",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.text}</span>;
+});
+
+// ─── Bubble ────────────────────────────────────────────────
+const Bubble=memo(({msg,me,isGroup,users,onImg,onAv,bubbleColor,th})=>{
+  const mine=msg.sender===me;const sender=users[msg.sender]||{username:msg.sender};
+  const isMedia=["image","video","voice"].includes(msg.type);
+  const myBubble=bubbleColor||"linear-gradient(135deg,#6366f1,#8b5cf6)";
+  return(
+    <div className="fadein msg-item" style={{display:"flex",flexDirection:mine?"row-reverse":"row",alignItems:"flex-end",gap:6,marginBottom:3,padding:"0 2px"}}>
+      {!mine&&<Av user={sender} size={28} onClick={()=>onAv?.(msg.sender)}/>}
+      <div style={{maxWidth:"78%"}}>
+        {!mine&&isGroup&&<div style={{fontSize:10,color:uc(msg.sender),fontWeight:700,marginBottom:2,paddingRight:4}}>{msg.sender}</div>}
+        <div style={{padding:isMedia?"5px":"9px 13px",borderRadius:mine?"18px 18px 4px 18px":"18px 18px 18px 4px",background:mine?myBubble:th.bubble,color:mine?"#fff":th.text,fontSize:14,lineHeight:1.5,boxShadow:mine?"0 2px 8px rgba(99,102,241,.25)":"0 1px 4px rgba(0,0,0,.08)"}}>
+          <MsgContent msg={msg} onImg={onImg} th={th}/>
+        </div>
+        <div style={{fontSize:10,color:th.text3,marginTop:2,textAlign:mine?"left":"right",paddingRight:2}}>{fmt(msg.ts)}{mine&&<span style={{marginRight:3,opacity:.7}}>✓✓</span>}</div>
+      </div>
+    </div>
+  );
+});
+
+// ─── Messages List with Pull-to-Refresh ───────────────────
+const MsgList=memo(({msgs,me,isGroup,users,empty,onImg,onAv,typingUsers,chatBg,bubbleColor,th,onRefresh})=>{
+  const bot=useRef(null);const pLen=useRef(0);
+  const scrollRef=useRef(null);
+  const[refreshing,setRefreshing]=useState(false);
+  const touchStartY=useRef(0);
+
+  useEffect(()=>{
+    if(msgs.length!==pLen.current){bot.current?.scrollIntoView({behavior:msgs.length-pLen.current>3?"auto":"smooth"});pLen.current=msgs.length;}
+  },[msgs.length]);
+
+  const onTouchStart=e=>{if(scrollRef.current?.scrollTop===0)touchStartY.current=e.touches[0].clientY;};
+  const onTouchEnd=async e=>{
+    const dy=e.changedTouches[0].clientY-touchStartY.current;
+    if(dy>60&&scrollRef.current?.scrollTop===0&&onRefresh&&!refreshing){
+      setRefreshing(true);await onRefresh();setTimeout(()=>setRefreshing(false),800);
+    }
+  };
+
+  return(
+    <div ref={scrollRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+      style={{flex:1,overflowY:"auto",padding:"10px 10px 4px",background:chatBg||th.bg,backgroundSize:"cover",backgroundPosition:"center",WebkitOverflowScrolling:"touch"}}>
+      {refreshing&&<div className="ptr-spinner"><div className="spin" style={{width:16,height:16,border:"2px solid #6366f1",borderTopColor:"transparent",borderRadius:"50%"}}/>جاري التحديث...</div>}
+      {msgs.length===0&&!refreshing&&empty}
+      {msgs.map(m=><Bubble key={m.id||m.ts} msg={m} me={me} isGroup={isGroup} users={users} onImg={onImg} onAv={onAv} bubbleColor={bubbleColor} th={th}/>)}
+      {typingUsers&&typingUsers.length>0&&(
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0"}}>
+          {typingUsers.slice(0,2).map(u=><Av key={u} user={users[u]} size={22}/>)}
+          <div style={{background:th.bubble,borderRadius:"12px 12px 12px 4px",padding:"8px 12px"}}>
+            <div className="typing" style={{display:"flex",alignItems:"center",gap:2}}>
+              <span style={{background:th.text2}}/><span style={{background:th.text2}}/><span style={{background:th.text2}}/>
+            </div>
+          </div>
+        </div>
+      )}
+      <div ref={bot}/>
+    </div>
+  );
+});
+
+// ─── Chat Input with Spam Control ─────────────────────────
+const SPAM_DELAY=1200; // ms between messages
+const ChatInp=memo(({ph,onSend,onMedia,onTyping,th})=>{
+  const[val,setVal]=useState("");const[mode,setMode]=useState("text");
+  const[rec,setRec]=useState(false);const[rs,setRs]=useState(0);const[rd,setRd]=useState(null);
+  const[cooldown,setCooldown]=useState(false);
+  const mr=useRef(null);const tr=useRef(null);const rr=useRef(0);const typT=useRef(null);
+  const ir=useRef(null);const vr=useRef(null);const lastSend=useRef(0);
+  const cdTimer=useRef(null);
+
+  const send=useCallback(()=>{
+    if(!val.trim())return;
+    const now=Date.now();
+    if(now-lastSend.current<SPAM_DELAY){toast("لا تُرسل بسرعة كبيرة ⏳","warn");return;}
+    lastSend.current=now;
+    onSend(val.trim());setVal("");snd("send");onTyping?.(false);
+    // show cooldown indicator briefly
+    setCooldown(true);
+    clearTimeout(cdTimer.current);
+    cdTimer.current=setTimeout(()=>setCooldown(false),SPAM_DELAY);
+  },[val,onSend,onTyping]);
+
+  const onChange=e=>{
+    setVal(e.target.value);
+    if(onTyping){onTyping(true);clearTimeout(typT.current);typT.current=setTimeout(()=>onTyping(false),2500);}
+  };
+  const hImg=e=>{const f=e.target.files[0];if(!f)return;if(f.size>5*1024*1024)return toast("الحجم الأقصى 5 ميغابايت","error");const r=new FileReader();r.onload=()=>onMedia("image",r.result);r.readAsDataURL(f);e.target.value="";setMode("text");};
+  const hVid=e=>{const f=e.target.files[0];if(!f)return;if(f.size>20*1024*1024)return toast("الحجم الأقصى 20 ميغابايت","error");const r=new FileReader();r.onload=()=>onMedia("video",r.result);r.readAsDataURL(f);e.target.value="";setMode("text");};
+  const startR=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({audio:true});const m=new MediaRecorder(s);const ch=[];m.ondataavailable=e=>ch.push(e.data);m.onstop=()=>{s.getTracks().forEach(t=>t.stop());const b=new Blob(ch,{type:"audio/webm"});const r=new FileReader();r.onload=()=>setRd({data:r.result,duration:rr.current});r.readAsDataURL(b);};m.start();mr.current=m;setRec(true);setRs(0);rr.current=0;tr.current=setInterval(()=>{rr.current+=1;setRs(s=>s+1);},1000);}catch{toast("تعذّر الوصول للميكروفون","error");}};
+  const stopR=()=>{if(!mr.current||mr.current.state==="inactive")return;mr.current.stop();clearInterval(tr.current);setRec(false);};
+  const sendV=()=>{if(!rd)return;onMedia("voice",rd.data,rd.duration);setRd(null);setMode("text");snd("send");};
+
+  return(
+    <div style={{background:th.topbar,borderTop:`1px solid ${th.border}`,flexShrink:0}}>
+      {/* Cooldown bar */}
+      {cooldown&&<div style={{height:2,background:"#6366f133",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,right:0,height:"100%",background:"#6366f1",animation:`cooldown ${SPAM_DELAY}ms linear forwards`}}/>
+      </div>}
+      {mode==="media"&&<div style={{padding:"10px 12px 0",display:"flex",gap:8}}>
+        <button onClick={()=>ir.current.click()} style={{flex:1,padding:"12px 8px",background:th.card2,border:`1px solid ${th.border}`,borderRadius:12,color:th.text,cursor:"pointer",fontSize:12,fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}><span style={{fontSize:24}}>🖼</span><span>صورة</span></button>
+        <button onClick={()=>vr.current.click()} style={{flex:1,padding:"12px 8px",background:th.card2,border:`1px solid ${th.border}`,borderRadius:12,color:th.text,cursor:"pointer",fontSize:12,fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}><span style={{fontSize:24}}>🎥</span><span>فيديو</span></button>
+        <button onClick={()=>setMode("voice")} style={{flex:1,padding:"12px 8px",background:th.card2,border:`1px solid ${th.border}`,borderRadius:12,color:th.text,cursor:"pointer",fontSize:12,fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}><span style={{fontSize:24}}>🎙</span><span>صوتية</span></button>
+        <input ref={ir} type="file" accept="image/*" style={{display:"none"}} onChange={hImg}/>
+        <input ref={vr} type="file" accept="video/*" style={{display:"none"}} onChange={hVid}/>
+      </div>}
+      {mode==="voice"&&<div style={{padding:"14px"}}>
+        {!rec&&!rd&&<div style={{textAlign:"center"}}><p style={{color:th.text2,fontSize:13,marginBottom:10}}>اضغط للتسجيل</p><button onClick={startR} style={{width:64,height:64,borderRadius:"50%",background:"linear-gradient(135deg,#ef4444,#dc2626)",border:"none",cursor:"pointer",fontSize:26,color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 18px rgba(239,68,68,.4)"}}>🎙</button></div>}
+        {rec&&<div style={{textAlign:"center"}}><div style={{color:"#ef4444",fontSize:14,marginBottom:10,fontWeight:600}}>🔴 {rs}ث</div><div style={{display:"flex",justifyContent:"center",gap:10}}><button onClick={stopR} style={{padding:"10px 22px",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",border:"none",borderRadius:12,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>⏹ إيقاف</button><button onClick={()=>{stopR();setTimeout(()=>{setRd(null);setRec(false);setRs(0);},300);}} style={{padding:"10px 18px",background:th.card2,border:`1px solid ${th.border}`,borderRadius:12,color:"#ef4444",fontWeight:700,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕</button></div></div>}
+        {rd&&!rec&&<div style={{textAlign:"center"}}><div style={{color:"#22c55e",fontSize:13,marginBottom:10}}>✅ {rd.duration}ث</div><div style={{display:"flex",justifyContent:"center",gap:10}}><button onClick={sendV} style={{padding:"10px 24px",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",border:"none",borderRadius:12,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>إرسال ←</button><button onClick={()=>{setRd(null);setMode("text");}} style={{padding:"10px 18px",background:th.card2,border:`1px solid ${th.border}`,borderRadius:12,color:"#ef4444",fontWeight:700,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>إلغاء</button></div></div>}
+      </div>}
+      <div style={{padding:"8px 10px",display:"flex",gap:7,alignItems:"center"}}>
+        <button onClick={()=>setMode(mode==="text"?"media":"text")} style={{width:38,height:38,flexShrink:0,background:mode!=="text"?"#6366f122":th.card2,border:`1px solid ${mode!=="text"?"#6366f1":th.border}`,borderRadius:12,cursor:"pointer",color:mode!=="text"?"#6366f1":th.text3,fontSize:20,display:"flex",alignItems:"center",justifyContent:"center"}}>{mode!=="text"?"✕":"+"}</button>
+        <input value={val} onChange={onChange} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder={ph} style={{flex:1,padding:"10px 14px",background:th.inp,border:`1.5px solid ${val?"#6366f1":th.inpBorder}`,borderRadius:22,color:th.text,fontSize:14,fontFamily:"inherit",outline:"none",direction:"rtl",transition:"border-color .2s"}}/>
+        <button onClick={send} disabled={cooldown&&!val.trim()} style={{width:38,height:38,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",border:"none",borderRadius:12,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(99,102,241,.35)",opacity:cooldown?0.7:1,transition:"opacity .2s"}}>←</button>
+      </div>
+    </div>
+  );
+});
+
+// ─── Add Member Inline ────────────────────────────────────
+const AddMemberInline=({gid,onAdd,th,I,B})=>{
+  const[v,setV]=useState("");
+  const add=()=>{if(v.trim()){onAdd(gid,v.trim());setV("");}};
+  return<div style={{display:"flex",gap:5}}>
+    <input value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="+ إضافة عضو..." style={{...I,flex:1,padding:"7px 10px",fontSize:12}}/>
+    <button onClick={add} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)","#fff",{padding:"7px 10px",fontSize:12})}}>+</button>
+  </div>;
+};
+
+// ══════════════════════════════════════════════════════════════
+// MAIN APP
+// ══════════════════════════════════════════════════════════════
+function App(){
+  const{dark,toggle:toggleDark}=useTheme();
+  const th=T(dark);
+
+  // ── State ──────────────────────────────────────────────────
+  const[me,setMe]=useState(()=>{try{return localStorage.getItem("nbu")||null;}catch{return null;}});
+  const[screen,setScreen]=useState(me?"home":"auth");
+  const[activeId,setActiveId]=useState(null);
+  const[users,setUsers]=useState({});
+  const[groups,setGroups]=useState({});
+  const[msgs,setMsgs]=useState([]);
+  const[dmChats,setDmChats]=useState({});
+  const[stories,setStories]=useState({});
+  const[presence,setPresence]=useState({});
+  const[friendReqs,setFriendReqs]=useState({});
+  const[typingMap,setTypingMap]=useState({});
+  const[chatBgs,setChatBgs]=useState(()=>ls("chatBgs",{}));
+  const[bubbleColors,setBubbleColors]=useState(()=>ls("bubbleColors",{}));
+
+  // Auth
+  const[aMode,setAMode]=useState("login");const[aUser,setAUser]=useState("");const[aPass,setAPass]=useState("");const[aErr,setAErr]=useState("");const[aLoading,setALoading]=useState(false);
+  // UI
+  const[ngName,setNgName]=useState("");const[jCode,setJCode]=useState("");const[jErr,setJErr]=useState("");
+  const[panel,setPanel]=useState(false);const[tab,setTab]=useState("chats");
+  const[vImg,setVImg]=useState(null);const[stIn,setStIn]=useState(null);
+  const[vStoryUser,setVStoryUser]=useState(null);
+  const[showCustomize,setShowCustomize]=useState(false);
+  const[groupEdit,setGroupEdit]=useState(false);const[gNewName,setGNewName]=useState("");const[gNewPhoto,setGNewPhoto]=useState(null);
+  const[copied,setCopied]=useState(false);const[showNdm,setShowNdm]=useState(false);const[ndmU,setNdmU]=useState("");
+  const[friendSearch,setFriendSearch]=useState("");
+  // Profile edit
+  const[eEmoji,setEEmoji]=useState("");const[eBio,setEBio]=useState("");const[ePhoto,setEPhoto]=useState(null);
+  // Password change
+  const[showPwdForm,setShowPwdForm]=useState(false);const[pwdOld,setPwdOld]=useState("");const[pwdNew,setPwdNew]=useState("");const[pwdNew2,setPwdNew2]=useState("");const[pwdLoading,setPwdLoading]=useState(false);
+
+  const stRef=useRef(null);const phRef=useRef(null);const gPhRef=useRef(null);const bgRef=useRef(null);
+  const pLen=useRef(0);const typingRef=useRef(null);
+
+  // ── Firebase ready ────────────────────────────────────────
+  const[fbReady,setFbReady]=useState(window.__fbReady||false);
+  useEffect(()=>{if(!window.__fbReady){const h=()=>setFbReady(true);window.addEventListener('fbReady',h);return()=>window.removeEventListener('fbReady',h);}else setFbReady(true);},[]);
+
+  // ── Presence ──────────────────────────────────────────────
+  const setPresenceOnline=useCallback(u=>{
+    if(!u)return;
+    const r=F().ref(D(),`presence/${u}`);
+    dSet(`presence/${u}`,{online:true,last:Date.now()});
+    F().onDisconnect(r).set({online:false,last:Date.now()});
+  },[]);
+
+  useEffect(()=>{if(fbReady&&me)setPresenceOnline(me);},[fbReady,me]);
+  useEffect(()=>{
+    const h=()=>{if(me)dSet(`presence/${me}`,{online:true,last:Date.now()});};
+    window.addEventListener("focus",h);document.addEventListener("visibilitychange",()=>{if(!document.hidden&&me)h();});
+    return()=>window.removeEventListener("focus",h);
+  },[me]);
+
+  // ── Auth / Session ────────────────────────────────────────
+  const login=u=>{setMe(u);try{localStorage.setItem("nbu",u);}catch{}setScreen("home");requestNotifPerm();setPresenceOnline(u);};
+  const logout=async()=>{if(me){await dSet(`presence/${me}`,{online:false,last:Date.now()});try{localStorage.removeItem("nbu");}catch{}}setMe(null);setScreen("auth");setActiveId(null);setMsgs([]);};
+
+  // ── Main data listeners ───────────────────────────────────
+  useEffect(()=>{
+    if(!fbReady)return;
+    const unsubs=[
+      dListen("users",v=>setUsers(v||{})),
+      dListen("groups",v=>setGroups(v||{})),
+      dListen("stories",v=>setStories(v||{})),
+      dListen("dmMsgs",v=>setDmChats(v||{})),
+      dListen("presence",v=>setPresence(v||{})),
+      dListen("friendRequests",v=>setFriendReqs(v||{})),
+      dListen("typing",v=>setTypingMap(v||{})),
+    ];
+    return()=>unsubs.forEach(u=>u());
+  },[fbReady]);
+
+  // ── Clean expired stories (24h) ───────────────────────────
+  useEffect(()=>{
+    if(!fbReady||!stories)return;
+    const now=Date.now();
+    Object.entries(stories).forEach(([u,us])=>{
+      if(!us)return;
+      Object.entries(us).forEach(([sid,s])=>{if(now-s.ts>86400000)dDel(`stories/${u}/${sid}`);});
+    });
+  },[stories]);
+
+  // ── Messages listener ─────────────────────────────────────
+  useEffect(()=>{
+    if(!me||!activeId)return;
+    let path="";
+    if(screen==="group")path=`groupMsgs/${activeId}`;
+    else if(screen==="dm")path=`dmMsgs/${[me,activeId].sort().join("_")}`;
+    else return;
+    pLen.current=0;
+    const unsub=dListen(path,v=>{
+      if(!v){setMsgs([]);pLen.current=0;return;}
+      const arr=Object.entries(v).map(([id,m])=>({...m,id})).sort((a,b)=>a.ts-b.ts);
+      if(arr.length>pLen.current&&pLen.current>0){
+        arr.slice(pLen.current).forEach(m=>{
+          if(m.sender!==me){
+            snd("recv");
+            showNotif(
+              screen==="dm"?`رسالة من ${m.sender}`:`رسالة في مجموعة`,
+              m.type==="text"?m.text:"🖼 وسائط",
+              ()=>{window.focus();}
+            );
+          }
+        });
+      }
+      pLen.current=arr.length;
+      setMsgs(arr);
+      if(screen==="dm"){const key=[me,activeId].sort().join("_");markRead(key);}
+    });
+    return unsub;
+  },[me,activeId,screen]);
+
+  // ── Unread counts ─────────────────────────────────────────
+  const unreadCounts=useMemo(()=>{
+    const counts={};
+    if(!me||!dmChats)return counts;
+    Object.keys(users).filter(u=>u!==me).forEach(u=>{
+      const key=[me,u].sort().join("_");
+      const ms=dmChats[key]?Object.values(dmChats[key]).sort((a,b)=>a.ts-b.ts):[];
+      let lastRead=0;try{const lr=ls("nabda_read",{});lastRead=lr[key]||0;}catch{}
+      const unread=ms.filter(m=>m.sender!==me&&m.ts>lastRead).length;
+      if(unread>0)counts[u]=unread;
+    });
+    return counts;
+  },[dmChats,me,users]);
+
+  const markRead=useCallback(chatId=>{
+    try{const lr=ls("nabda_read",{});lr[chatId]=Date.now();lsSet("nabda_read",lr);}catch{}
+  },[]);
+
+  // ── Navigation ────────────────────────────────────────────
+  const go=useCallback((s,id=null)=>{
+    setScreen(s);setActiveId(id);setPanel(false);setJErr("");setJCode("");
+    setShowCustomize(false);setGroupEdit(false);setShowNdm(false);setShowPwdForm(false);
+    pLen.current=0;setMsgs([]);
+    if(s==="dm"&&id&&me){const key=[me,id].sort().join("_");markRead(key);}
+    if(s==="profile"&&me){const md=users[me];setEEmoji(md?.emoji||"");setEBio(md?.bio||"");setEPhoto(md?.photo||null);}
+    if(s!=="auth")window.history.pushState({},"","");
+  },[me,markRead,users]);
+
+  useEffect(()=>{
+    const h=e=>{if(screen!=="home"&&screen!=="auth"){e.preventDefault();go("home");}};
+    window.addEventListener("popstate",h);
+    if(screen!=="home"&&screen!=="auth")window.history.pushState({},"","");
+    return()=>window.removeEventListener("popstate",h);
+  },[screen]);
+
+  const md=me?users[me]:null;
+
+  // ── AUTH ──────────────────────────────────────────────────
+  const auth=async()=>{
+    setAErr("");const u=aUser.trim(),p=aPass.trim();
+    if(!u||!p)return setAErr("أدخل الاسم وكلمة المرور");
+    if(u.includes(" "))return setAErr("اسم المستخدم لا يحتوي على مسافات");
+    setALoading(true);
+    try{
+      if(aMode==="login"){
+        const d=await dGet(`users/${u}`);
+        if(!d){setAErr("المستخدم غير موجود");return;}
+        if(d.password!==p){setAErr("كلمة المرور خاطئة");return;}
+        login(u);
+      }else{
+        if(u.length<2)return setAErr("الاسم قصير جداً (حرفان على الأقل)");
+        if(u.length>20)return setAErr("الاسم طويل جداً (20 حرفاً كحد أقصى)");
+        if(p.length<4)return setAErr("كلمة المرور قصيرة (4 أحرف على الأقل)");
+        const e=await dGet(`users/${u}`);
+        if(e)return setAErr("اسم المستخدم محجوز، اختر اسماً آخر");
+        await dSet(`users/${u}`,{username:u,password:p,emoji:"",bio:"",photo:null,createdAt:Date.now()});
+        login(u);
+      }
+    }finally{setALoading(false);}
+  };
+
+  // ── FRIENDS ───────────────────────────────────────────────
+  const myFriends=useMemo(()=>me&&users[me]?Object.keys(users[me]?.friends||{}):[],[users,me]);
+
+  const sendFriendReq=async target=>{
+    if(!target||!users[target]||target===me)return toast("المستخدم غير موجود","error");
+    if(myFriends.includes(target))return toast("أنتما أصدقاء بالفعل","info");
+    const existing=await dGet(`friendRequests/${target}/${me}`);
+    if(existing)return toast("تم إرسال الطلب مسبقاً","info");
+    await dSet(`friendRequests/${target}/${me}`,{from:me,ts:Date.now()});
+    snd("notif");toast(`تم إرسال طلب صداقة إلى ${target} ✓`,"success");
+  };
+  const acceptFriendReq=async from=>{
+    await dUpd(`users/${me}/friends`,{[from]:true});
+    await dUpd(`users/${from}/friends`,{[me]:true});
+    await dDel(`friendRequests/${me}/${from}`);
+    snd("notif");toast(`أصبحت وصديق ${from} ✓`,"success");
+    showNotif("صديق جديد!",`${from} أصبح صديقك الآن`);
+  };
+  const rejectFriendReq=async from=>{await dDel(`friendRequests/${me}/${from}`);toast("تم رفض الطلب","info");};
+  const removeFriend=async friend=>{
+    if(!confirm(`هل تريد إزالة ${friend} من قائمة أصدقائك؟`))return;
+    await dDel(`users/${me}/friends/${friend}`);await dDel(`users/${friend}/friends/${me}`);
+    toast("تمت الإزالة","info");
+  };
+  const myPendingReqs=me&&friendReqs[me]?Object.keys(friendReqs[me]):[];
+  const totalNotifs=myPendingReqs.length+Object.values(unreadCounts).reduce((a,b)=>a+b,0);
+
+  // ── MESSAGES ──────────────────────────────────────────────
+  const sendG=useCallback(async t=>{if(!t.trim())return;await dPush(`groupMsgs/${activeId}`,{sender:me,type:"text",text:t,ts:Date.now()});snd("send");},[activeId,me]);
+  const sendD=useCallback(async t=>{if(!t.trim())return;const c=[me,activeId].sort().join("_");await dPush(`dmMsgs/${c}`,{sender:me,type:"text",text:t,ts:Date.now()});snd("send");},[activeId,me]);
+  const medG=useCallback(async(tp,d,dur=0)=>{await dPush(`groupMsgs/${activeId}`,{sender:me,type:tp,data:d,duration:dur,ts:Date.now()});snd("send");},[activeId,me]);
+  const medD=useCallback(async(tp,d,dur=0)=>{const c=[me,activeId].sort().join("_");await dPush(`dmMsgs/${c}`,{sender:me,type:tp,data:d,duration:dur,ts:Date.now()});snd("send");},[activeId,me]);
+
+  const handleRefresh=useCallback(async()=>{
+    // Force re-listen by toggling (data is realtime, just cosmetic refresh)
+    toast("تم التحديث ✓","success");
+  },[]);
+
+  // ── TYPING ────────────────────────────────────────────────
+  const handleTyping=useCallback(isTyping=>{
+    if(!activeId)return;
+    const path=screen==="dm"?`typing/dm/${[me,activeId].sort().join("_")}/${me}`:`typing/group/${activeId}/${me}`;
+    if(isTyping){dSet(path,true);clearTimeout(typingRef.current);typingRef.current=setTimeout(()=>dDel(path),3000);}
+    else dDel(path);
+  },[activeId,me,screen]);
+
+  useEffect(()=>()=>{
+    if(me&&activeId){
+      const path=screen==="dm"?`typing/dm/${[me,activeId].sort().join("_")}/${me}`:`typing/group/${activeId}/${me}`;
+      dDel(path);
+    }
+  },[me,activeId,screen]);
+
+  const typingUsers=useMemo(()=>{
+    if(!activeId||!me)return[];
+    const obj=screen==="dm"?(typingMap?.dm?.[`${[me,activeId].sort().join("_")}`]||{}):(typingMap?.group?.[activeId]||{});
+    return Object.keys(obj).filter(u=>u!==me);
+  },[activeId,me,screen,typingMap]);
+
+  // ── GROUPS ────────────────────────────────────────────────
+  const mkGrp=async()=>{
+    if(!ngName.trim())return;
+    const gid=uid(),inv=uid();
+    await dSet(`groups/${gid}`,{id:gid,name:ngName.trim(),admin:me,members:{[me]:true},mods:{},pending:{},inviteCode:inv,inviteActive:true,photo:null,createdAt:Date.now()});
+    setNgName("");go("group",gid);toast("تم إنشاء المجموعة ✓","success");
+  };
+  const joinInv=async()=>{
+    setJErr("");const code=jCode.trim();
+    const all=await dGet("groups");if(!all)return setJErr("لا توجد مجموعات");
+    const g=Object.values(all).find(g=>g.inviteCode===code&&g.inviteActive);
+    if(!g)return setJErr("رمز الدعوة غير صالح أو منتهي");
+    if(g.members&&g.members[me]){go("group",g.id);return;}
+    await dUpd(`groups/${g.id}/members`,{[me]:true});
+    if(g.pending&&g.pending[me])await dDel(`groups/${g.id}/pending/${me}`);
+    go("group",g.id);setJCode("");toast("تم الانضمام ✓","success");
+    // notify admin
+    showNotif("عضو جديد",`${me} انضم للمجموعة ${g.name}`);
+  };
+  const reqJoin=async()=>{
+    setJErr("");const gid=jCode.trim();
+    const g=await dGet(`groups/${gid}`);
+    if(!g)return setJErr("المعرّف غير موجود");
+    if(g.members&&g.members[me])return setJErr("أنت بالفعل عضو");
+    if(g.pending&&g.pending[me])return setJErr("طلبك قيد الانتظار بالفعل");
+    await dUpd(`groups/${gid}/pending`,{[me]:true});setJErr("✅ تم إرسال الطلب للمشرف!");
+  };
+  const approve=async(gid,u)=>{
+    await dUpd(`groups/${gid}/members`,{[u]:true});
+    await dDel(`groups/${gid}/pending/${u}`);
+    snd("notif");toast(`تم قبول ${u} ✓`,"success");
+    // Notify the user added to group
+    showNotif("تمت إضافتك لمجموعة",`تمت إضافتك في المجموعة`);
+  };
+  const reject=(gid,u)=>{dDel(`groups/${gid}/pending/${u}`);toast("تم رفض الطلب","info");};
+  const kick=(gid,u)=>{if(!confirm(`هل تريد إزالة ${u} من المجموعة؟`))return;dDel(`groups/${gid}/members/${u}`);toast(`تمت إزالة ${u}`,"info");};
+  const togInv=(gid,cur)=>dUpd(`groups/${gid}`,{inviteActive:!cur});
+  const addMember=async(gid,username)=>{
+    const u=username.trim();
+    if(!u)return;
+    if(!users[u])return toast("المستخدم غير موجود","error");
+    const g=groups[gid];if(g?.members&&g.members[u])return toast("المستخدم عضو بالفعل","info");
+    await dUpd(`groups/${gid}/members`,{[u]:true});
+    snd("notif");toast(`تمت إضافة ${u} ✓`,"success");
+    showNotif("تمت إضافتك لمجموعة",`أضافك ${me} في ${g?.name||"مجموعة"}`);
+  };
+  const deleteGroup=async gid=>{
+    if(!confirm("هل تريد حذف المجموعة نهائياً؟ لا يمكن التراجع!"))return;
+    await dDel(`groups/${gid}`);await dDel(`groupMsgs/${gid}`);
+    go("home");toast("تم حذف المجموعة","info");
+  };
+  const saveGroupEdit=async gid=>{
+    const upd={};
+    if(gNewName.trim())upd.name=gNewName.trim();
+    if(gNewPhoto)upd.photo=gNewPhoto;
+    await dUpd(`groups/${gid}`,upd);
+    setGroupEdit(false);setGNewName("");setGNewPhoto(null);toast("تم الحفظ ✓","success");
+  };
+  // Mod system
+  const isGroupAdmin=gid=>groups[gid]?.admin===me;
+  const isGroupMod=gid=>groups[gid]?.mods?.[me]===true;
+  const canManage=gid=>isGroupAdmin(gid)||isGroupMod(gid);
+  const toggleMod=async(gid,u)=>{
+    const g=groups[gid];if(!g)return;
+    if(g.mods&&g.mods[u]){await dDel(`groups/${gid}/mods/${u}`);toast(`تمت إزالة صلاحيات ${u}`,"info");}
+    else{await dUpd(`groups/${gid}/mods`,{[u]:true});toast(`${u} أصبح مشرفاً مساعداً ✓`,"success");}
+  };
+
+  // ── PROFILE ───────────────────────────────────────────────
+  const saveProfile=async()=>{
+    const upd={emoji:eEmoji,bio:eBio.trim(),photo:ePhoto||null};
+    await dUpd(`users/${me}`,upd);toast("تم حفظ التغييرات ✓","success");go("home");
+  };
+
+  const deleteAccount=async()=>{
+    if(!confirm("هل تريد حذف حسابك نهائياً؟ لا يمكن التراجع!"))return;
+    await dDel(`users/${me}`);await dDel(`presence/${me}`);await dDel(`friendRequests/${me}`);
+    Object.values(groups).forEach(g=>{if(g.members&&g.members[me])dDel(`groups/${g.id}/members/${me}`);});
+    logout();
+  };
+
+  const changePassword=async()=>{
+    const op=pwdOld.trim(),np=pwdNew.trim(),np2=pwdNew2.trim();
+    if(!op||!np||!np2)return toast("يرجى تعبئة جميع الحقول","error");
+    setPwdLoading(true);
+    try{
+      const d=await dGet(`users/${me}`);
+      if(!d||d.password!==op)return toast("كلمة المرور الحالية غير صحيحة","error");
+      if(np.length<4)return toast("كلمة المرور الجديدة قصيرة (4 أحرف على الأقل)","error");
+      if(np!==np2)return toast("كلمتا المرور غير متطابقتين","error");
+      if(np===op)return toast("كلمة المرور الجديدة مطابقة للقديمة","warn");
+      await dUpd(`users/${me}`,{password:np});
+      setPwdOld("");setPwdNew("");setPwdNew2("");setShowPwdForm(false);
+      toast("تم تغيير كلمة المرور بنجاح 🔐","success");
+    }finally{setPwdLoading(false);}
+  };
+
+  const hPhoto=e=>{const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024)return toast("الحجم الأقصى 3 ميغابايت","error");const r=new FileReader();r.onload=()=>setEPhoto(r.result);r.readAsDataURL(f);};
+  const hGPhoto=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>setGNewPhoto(r.result);r.readAsDataURL(f);};
+
+  // ── STORIES ───────────────────────────────────────────────
+  const hStory=e=>{const f=e.target.files[0];if(!f)return;if(f.size>5*1024*1024)return toast("الحجم الأقصى 5 ميغابايت","error");const r=new FileReader();r.onload=()=>setStIn(r.result);r.readAsDataURL(f);e.target.value="";};
+  const postStory=async()=>{if(!stIn)return;await dPush(`stories/${me}`,{data:stIn,ts:Date.now(),type:"image"});setStIn(null);toast("تم نشر القصة ✓","success");};
+  const deleteStory=async sid=>{await dDel(`stories/${me}/${sid}`);setVStoryUser(null);toast("تم حذف القصة","info");};
+  const markSeen=u=>{try{const s=ls("ns",{});s[u]=Date.now();lsSet("ns",s);}catch{}};
+  const isSeen=u=>{try{const s=ls("ns",{});const ls2=s[u]||0;const us=stories[u];if(!us||!Object.keys(us).length)return true;const last=Math.max(...Object.values(us).map(x=>x.ts));return ls2>last;}catch{return false;}};
+
+  // ── CHAT CUSTOMIZATION ────────────────────────────────────
+  const saveChatBg=(chatId,bg)=>{const n={...chatBgs,[chatId]:bg};setChatBgs(n);lsSet("chatBgs",n);};
+  const saveBubbleColor=(chatId,color)=>{const n={...bubbleColors,[chatId]:color};setBubbleColors(n);lsSet("bubbleColors",n);};
+
+  // ── COMPUTED ──────────────────────────────────────────────
+  const myGrps=useMemo(()=>Object.values(groups).filter(g=>g.members&&g.members[me]),[groups,me]);
+  const others=useMemo(()=>Object.keys(users).filter(u=>u!==me),[users,me]);
+  const ag=screen==="group"?groups[activeId]:null;
+  const agM=ag?.members?Object.keys(ag.members):[];
+  const agP=ag?.pending?Object.keys(ag.pending):[];
+  const getDK=u=>[me,u].sort().join("_");
+  const getDMs=u=>{const k=getDK(u);return dmChats[k]?Object.values(dmChats[k]).sort((a,b)=>a.ts-b.ts):[];};
+  const hasDm=u=>getDMs(u).length>0;
+  const lastDm=u=>{const ms=getDMs(u);return ms[ms.length-1];};
+  const lp=m=>{if(!m)return null;if(m.type==="text")return m.text.length>40?m.text.slice(0,40)+"...":m.text;if(m.type==="image")return"🖼 صورة";if(m.type==="video")return"🎥 فيديو";return"🎙 رسالة صوتية";};
+  const isOnline=u=>presence[u]?.online===true;
+  const lastSeen=u=>{const p=presence[u];if(!p)return"";if(p.online)return"متصل الآن";const d=Date.now()-p.last;if(d<60000)return"آخر ظهور: منذ لحظة";if(d<3600000)return`آخر ظهور: منذ ${Math.floor(d/60000)} د`;if(d<86400000)return`آخر ظهور: ${fmt(p.last)}`;return`آخر ظهور: ${new Date(p.last).toLocaleDateString("ar")}`;};
+  const swStories=useMemo(()=>Object.keys(stories).filter(u=>u!==me&&stories[u]&&Object.keys(stories[u]).length>0),[stories,me]);
+  // Friends with stories only
+  const friendsWithStories=useMemo(()=>swStories.filter(u=>myFriends.includes(u)),[swStories,myFriends]);
+
+  const chatId=screen==="dm"?[me,activeId].sort().join("_"):activeId;
+  const currentChatBg=chatId?chatBgs[chatId]:null;
+  const currentBubbleColor=chatId?bubbleColors[chatId]:null;
+
+  // Style helpers
+  const B=(bg,col="#fff",ex={})=>({padding:"10px 16px",background:bg,border:"none",borderRadius:12,color:col,fontWeight:700,cursor:"pointer",fontSize:14,fontFamily:"inherit",...ex});
+  const I={width:"100%",padding:"11px 14px",background:th.inp,border:`1.5px solid ${th.inpBorder}`,borderRadius:12,color:th.text,fontSize:14,fontFamily:"inherit",outline:"none",direction:"rtl",boxSizing:"border-box"};
+  const C=(active=false)=>({display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:14,cursor:"pointer",background:active?"#6366f111":th.card,border:`1px solid ${active?"#6366f133":th.border}`,marginBottom:6,transition:"background .12s"});
+
+  // ── LOADING ───────────────────────────────────────────────
+  if(!fbReady)return(
+    <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:dark?"linear-gradient(160deg,#0a0a14,#0d0d1a)":"linear-gradient(160deg,#f0f4ff,#e8eeff)",flexDirection:"column",gap:16}}>
+      <div style={{width:64,height:64,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,boxShadow:"0 8px 24px rgba(99,102,241,.35)"}}>💬</div>
+      <div style={{color:dark?"#a5b4fc":"#6366f1",fontSize:20,fontWeight:800,letterSpacing:"-0.5px"}}>نبضة</div>
+      <div style={{display:"flex",gap:6,marginTop:4}}>
+        {[0,1,2].map(i=><div key={i} className="spin" style={{width:8,height:8,borderRadius:"50%",background:"#6366f1",opacity:0.3+i*0.35,animationDelay:`${i*0.15}s`}}/>)}
+      </div>
+    </div>
+  );
+
+  // ── AUTH ──────────────────────────────────────────────────
+  if(screen==="auth")return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:dark?"linear-gradient(160deg,#0a0a14,#0d0d1a)":"linear-gradient(160deg,#f0f4ff,#e8eeff)",padding:20,direction:"rtl"}}>
+      <ToastHost/>
+      <div style={{width:"100%",maxWidth:360,background:th.card,border:`1px solid ${th.border}`,borderRadius:24,padding:"40px 28px",boxShadow:"0 20px 60px rgba(0,0,0,.15)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{width:72,height:72,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:20,margin:"0 auto 14px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 8px 24px rgba(99,102,241,.4)"}}>💬</div>
+          <h1 style={{color:th.text,fontSize:26,fontWeight:800,letterSpacing:"-1px"}}>نبضة</h1>
+          <p style={{color:th.text2,fontSize:13,marginTop:4}}>تواصل مع أصدقائك بسهولة</p>
+        </div>
+        <div style={{display:"flex",gap:6,marginBottom:22,background:th.bg,borderRadius:14,padding:4}}>
+          {["login","register"].map(m=><button key={m} onClick={()=>{setAMode(m);setAErr("");}} style={{flex:1,padding:"10px",border:"none",borderRadius:11,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:13,background:aMode===m?"linear-gradient(135deg,#6366f1,#8b5cf6)":"transparent",color:aMode===m?"#fff":th.text2,transition:"all .2s"}}>{m==="login"?"دخول":"حساب جديد"}</button>)}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <input value={aUser} onChange={e=>setAUser(e.target.value)} onKeyDown={e=>e.key==="Enter"&&auth()} placeholder="اسم المستخدم" style={I} autoComplete="username" disabled={aLoading}/>
+          <input type="password" value={aPass} onChange={e=>setAPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&auth()} placeholder="كلمة المرور" style={I} autoComplete={aMode==="login"?"current-password":"new-password"} disabled={aLoading}/>
+        </div>
+        {aErr&&<div style={{marginTop:12,padding:"9px 14px",background:"#fee2e2",borderRadius:10,color:"#ef4444",fontSize:13,textAlign:"center",fontWeight:600}}>{aErr}</div>}
+        <button onClick={auth} disabled={aLoading} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),width:"100%",marginTop:16,fontSize:15,padding:"13px",borderRadius:14,boxShadow:"0 4px 14px rgba(99,102,241,.4)",opacity:aLoading?0.7:1}}>
+          {aLoading?<div className="spin" style={{width:18,height:18,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%",margin:"0 auto"}}/>:(aMode==="login"?"دخول ←":"إنشاء الحساب ←")}
+        </button>
+      </div>
+    </div>
+  );
+
+  // ══════════════════════════════════════════════════════════
+  // MAIN LAYOUT
+  // ══════════════════════════════════════════════════════════
+  return(
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",background:th.bg,color:th.text,direction:"rtl",overflow:"hidden"}}>
+      <ToastHost/>
+
+      {/* Image viewer */}
+      {vImg&&<ImgView src={vImg} onClose={()=>setVImg(null)}/>}
+
+      {/* Story viewer */}
+      {vStoryUser&&<StoryViewer
+        stories={stories} initialUser={vStoryUser} users={users} me={me}
+        onClose={()=>setVStoryUser(null)} onDelete={deleteStory}
+        isOnline={isOnline} fmtFull={fmtFull}
+      />}
+
+      {/* Story preview before post */}
+      {stIn&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.96)",zIndex:998,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+        <img src={stIn} style={{maxWidth:"90vw",maxHeight:"65vh",objectFit:"contain",borderRadius:14}}/>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={postStory} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),fontSize:15}}>نشر القصة 📢</button>
+          <button onClick={()=>setStIn(null)} style={{...B(th.card,th.text,{border:`1px solid ${th.border}`})}}>إلغاء</button>
+        </div>
+      </div>}
+
+      {/* Chat Customize Modal */}
+      {showCustomize&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:990,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowCustomize(false)}>
+        <div className="slideup" style={{background:th.card,width:"100%",maxWidth:500,borderRadius:"20px 20px 0 0",padding:24}} onClick={e=>e.stopPropagation()}>
+          <div style={{width:40,height:4,background:th.border,borderRadius:2,margin:"0 auto 16px"}}/>
+          <div style={{fontWeight:800,fontSize:16,marginBottom:16,color:th.text}}>🎨 تخصيص الدردشة</div>
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,color:th.text2,fontWeight:700,marginBottom:8}}>لون فقاعات رسائلك</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {["linear-gradient(135deg,#6366f1,#8b5cf6)","linear-gradient(135deg,#ec4899,#f43f5e)","linear-gradient(135deg,#f59e0b,#f97316)","linear-gradient(135deg,#10b981,#059669)","linear-gradient(135deg,#3b82f6,#2563eb)","linear-gradient(135deg,#8b5cf6,#7c3aed)","linear-gradient(135deg,#000,#374151)","linear-gradient(135deg,#ef4444,#dc2626)"].map(c=>(
+                <div key={c} onClick={()=>{saveBubbleColor(chatId,c);toast("تم الحفظ","success");}} style={{width:36,height:36,borderRadius:10,background:c,cursor:"pointer",border:currentBubbleColor===c?"3px solid #fff":"3px solid transparent",boxShadow:"0 2px 8px rgba(0,0,0,.2)",transition:"transform .15s",transform:currentBubbleColor===c?"scale(1.1)":"scale(1)"}}/>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:12,color:th.text2,fontWeight:700,marginBottom:8}}>خلفية المحادثة</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+              {[null,"#f0fdf4","#fdf2f8","#eff6ff","#fefce8","#f0f4ff","#fef9f0"].map(c=>(
+                <div key={c||"none"} onClick={()=>{saveChatBg(chatId,c||"");toast("تم الحفظ","success");}} style={{width:36,height:36,borderRadius:10,background:c||th.bg,cursor:"pointer",border:`3px solid ${(currentChatBg||"")===(c||"")?"#6366f1":th.border}`,boxShadow:"0 1px 4px rgba(0,0,0,.1)"}}>{!c&&<span style={{fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>🚫</span>}</div>
+              ))}
+              <button onClick={()=>bgRef.current.click()} style={{width:36,height:36,borderRadius:10,background:th.card2,border:`1px dashed ${th.border}`,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>📷</button>
+              <input ref={bgRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{saveChatBg(chatId,r.result);toast("تم الحفظ","success");};r.readAsDataURL(f);e.target.value="";}}/>
+            </div>
+          </div>
+        </div>
+      </div>}
+
+      {/* ── TOP BAR ─────────────────────────────────────── */}
+      <div style={{padding:"10px 14px",background:th.topbar,borderBottom:`1px solid ${th.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0,boxShadow:"0 1px 6px rgba(0,0,0,.06)"}}>
+        {["dm","group","newGroup","join","profile","userProfile","friends"].includes(screen)&&
+          <button onClick={()=>go("home")} style={{background:"none",border:"none",cursor:"pointer",color:th.text2,fontSize:22,padding:2,lineHeight:1}}>←</button>}
+        {screen==="home"&&
+          <button onClick={()=>go("profile")} style={{background:"none",border:"none",cursor:"pointer",padding:0,position:"relative"}}>
+            <Av user={md} size={36} online={true}/>
+            {totalNotifs>0&&<span style={{position:"absolute",top:-4,left:-4,background:"#ef4444",color:"#fff",fontSize:9,fontWeight:700,borderRadius:"50%",minWidth:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px"}}>{totalNotifs}</span>}
+          </button>}
+        {screen==="dm"&&activeId&&<button onClick={()=>go("userProfile",activeId)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}><Av user={users[activeId]} size={34} online={isOnline(activeId)}/></button>}
+        {screen==="group"&&ag&&(ag.photo?<img src={ag.photo} style={{width:34,height:34,borderRadius:10,objectFit:"cover",flexShrink:0}}/>:<div style={{width:34,height:34,borderRadius:10,background:`linear-gradient(135deg,${uc(ag.name)},${uc(ag.name+"1")})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:"#fff",flexShrink:0}}>{ag.name[0]}</div>)}
+        {screen==="userProfile"&&activeId&&<Av user={users[activeId]} size={34} online={isOnline(activeId)}/>}
+        {screen==="friends"&&<span style={{fontSize:20}}>👥</span>}
+
+        <div style={{flex:1,minWidth:0}}>
+          {screen==="home"&&<><span style={{fontWeight:800,fontSize:17,color:dark?"#a5b4fc":"#6366f1",letterSpacing:"-0.5px"}}>نبضة</span><span style={{fontSize:11,color:th.text3,marginRight:6}}>● {me}</span></>}
+          {screen==="dm"&&activeId&&<div onClick={()=>go("userProfile",activeId)} style={{cursor:"pointer"}}>
+            <div style={{fontWeight:700,fontSize:15,color:th.text}}>{activeId}</div>
+            <div style={{fontSize:11,color:isOnline(activeId)?"#22c55e":th.text3}}>{typingUsers.includes(activeId)?"✍️ يكتب...":lastSeen(activeId)}</div>
+          </div>}
+          {screen==="group"&&ag&&<div>
+            <div style={{fontWeight:700,fontSize:15,color:th.text}}>{ag.name}</div>
+            <div style={{fontSize:11,color:th.text3}}>{agM.length} عضو{typingUsers.length>0&&" · ✍️ يكتب شخص ما..."}</div>
+          </div>}
+          {screen==="newGroup"&&<span style={{fontWeight:700,color:th.text}}>مجموعة جديدة</span>}
+          {screen==="join"&&<span style={{fontWeight:700,color:th.text}}>الانضمام لمجموعة</span>}
+          {screen==="profile"&&<span style={{fontWeight:700,color:th.text}}>ملفي الشخصي</span>}
+          {screen==="userProfile"&&activeId&&<div><div style={{fontWeight:700,fontSize:15,color:th.text}}>{activeId}</div><div style={{fontSize:11,color:isOnline(activeId)?"#22c55e":th.text3}}>{lastSeen(activeId)}</div></div>}
+          {screen==="friends"&&<span style={{fontWeight:700,color:th.text}}>الأصدقاء ({myFriends.length})</span>}
+        </div>
+
+        {screen==="home"&&<div style={{display:"flex",gap:6}}>
+          <button onClick={()=>go("friends")} style={{background:"none",border:"none",cursor:"pointer",color:th.text2,fontSize:20,padding:4,position:"relative"}}>
+            👥{myPendingReqs.length>0&&<span style={{position:"absolute",top:0,right:0,background:"#ef4444",color:"#fff",fontSize:8,fontWeight:700,borderRadius:"50%",width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{myPendingReqs.length}</span>}
+          </button>
+          <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",color:th.text2,fontSize:20,padding:4}}>{dark?"☀️":"🌙"}</button>
+        </div>}
+        {(screen==="dm"||screen==="group")&&<button onClick={()=>setShowCustomize(true)} style={{background:"none",border:"none",cursor:"pointer",color:th.text2,fontSize:18,padding:4}}>🎨</button>}
+        {screen==="group"&&ag&&<button onClick={()=>setPanel(!panel)} style={{...B(panel?"#6366f122":th.card2,dark?"#a5b4fc":"#6366f1",{padding:"7px 11px",fontSize:12,border:`1px solid ${th.border}`})}}>{canManage(activeId)?"👑":"👥"}</button>}
+      </div>
+
+      {/* ── HOME ────────────────────────────────────────── */}
+      {screen==="home"&&<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        {/* Stories - friends only */}
+        <div style={{padding:"10px 14px 8px",borderBottom:`1px solid ${th.border}`,flexShrink:0,background:th.topbar}}>
+          <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:2,scrollbarWidth:"none"}}>
+            {/* My story */}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,flexShrink:0,cursor:"pointer"}} onClick={()=>stRef.current.click()}>
+              <div style={{width:52,height:52,borderRadius:"50%",background:th.card2,border:`2px dashed #6366f1`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,position:"relative"}}>
+                +
+                {stories[me]&&Object.keys(stories[me]).length>0&&<div style={{position:"absolute",bottom:-1,right:-1,width:16,height:16,background:"#22c55e",borderRadius:"50%",border:"2px solid white",fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>✓</div>}
+              </div>
+              <input ref={stRef} type="file" accept="image/*" style={{display:"none"}} onChange={hStory}/>
+              <span style={{fontSize:10,color:th.text3}}>قصتي</span>
+            </div>
+            {/* My existing stories */}
+            {stories[me]&&Object.keys(stories[me]).length>0&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,flexShrink:0}}>
+              <div onClick={()=>{markSeen(me);setVStoryUser(me);}} style={{cursor:"pointer",padding:2,borderRadius:"50%",border:"2.5px solid #22c55e",display:"inline-flex"}}><Av user={md} size={46}/></div>
+              <span style={{fontSize:10,color:"#22c55e"}}>قصتي</span>
+            </div>}
+            {/* Friends' stories only */}
+            {friendsWithStories.map(u=>{const seen=isSeen(u);return(
+              <div key={u} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,flexShrink:0}}>
+                <div onClick={()=>{markSeen(u);setVStoryUser(u);}} style={{cursor:"pointer",padding:2,borderRadius:"50%",border:`2.5px solid ${seen?"#aaa":"#6366f1"}`,display:"inline-flex"}}>
+                  <Av user={users[u]} size={46} online={isOnline(u)}/>
+                </div>
+                <span style={{fontSize:10,color:seen?th.text3:"#6366f1",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u}</span>
+              </div>
+            );})}
+            {friendsWithStories.length===0&&swStories.length>0&&<div style={{display:"flex",alignItems:"center",color:th.text3,fontSize:11,padding:"0 4px"}}>أضف أصدقاء لرؤية قصصهم</div>}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{display:"flex",background:th.tabs,borderBottom:`1px solid ${th.border}`,flexShrink:0}}>
+          {[["chats","💬 الخاصة"],["groups","👥 مجموعات"],["unread","🔔"+(Object.values(unreadCounts).reduce((a,b)=>a+b,0)>0?` (${Object.values(unreadCounts).reduce((a,b)=>a+b,0)})`:"")]].map(([k,l])=>(
+            <button key={k} className="tab" onClick={()=>setTab(k)} style={{color:tab===k?(dark?"#a5b4fc":"#6366f1"):th.text3,borderBottomColor:tab===k?"#6366f1":"transparent"}}>{l}</button>
+          ))}
+        </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:12,WebkitOverflowScrolling:"touch"}}>
+          {/* CHATS tab */}
+          {tab==="chats"&&<>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <span style={{fontSize:11,fontWeight:700,color:th.text3,letterSpacing:"1px"}}>المحادثات</span>
+              <button onClick={()=>setShowNdm(!showNdm)} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:22,lineHeight:1,padding:0}}>+</button>
+            </div>
+            {showNdm&&<div style={{display:"flex",gap:6,marginBottom:12}}>
+              <input value={ndmU} onChange={e=>setNdmU(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){const t=ndmU.trim();if(t&&users[t]&&t!==me){go("dm",t);setShowNdm(false);setNdmU("");}else if(t)toast("المستخدم غير موجود","error");}}} placeholder="اسم المستخدم..." style={{...I,flex:1,padding:"9px 12px",fontSize:13}} autoFocus/>
+              <button onClick={()=>{const t=ndmU.trim();if(t&&users[t]&&t!==me){go("dm",t);setShowNdm(false);setNdmU("");}else if(t)toast("المستخدم غير موجود","error");}} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)","#fff",{padding:"9px 14px"})}}>→</button>
+            </div>}
+            {others.filter(u=>hasDm(u)).sort((a,b)=>{const la=lastDm(a)?.ts||0,lb=lastDm(b)?.ts||0;return lb-la;}).map(u=>{
+              const last=lastDm(u);const uc2=unreadCounts[u]||0;const online=isOnline(u);
+              return(
+                <div key={u} style={C(uc2>0)} onClick={()=>go("dm",u)}>
+                  <div style={{position:"relative",flexShrink:0}}>
+                    <Av user={users[u]} size={44} online={online} ring={friendsWithStories.includes(u)} seen={isSeen(u)}
+                      onClick={e=>{if(friendsWithStories.includes(u)){e.stopPropagation();markSeen(u);setVStoryUser(u);}}}/>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:uc2>0?700:600,fontSize:14,color:th.text}}>{users[u]?.emoji&&<span style={{marginLeft:4}}>{users[u].emoji}</span>}{u}</div>
+                    <div style={{fontSize:12,color:uc2>0?"#6366f1":th.text3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:uc2>0?600:400}}>{last?.sender===me?"أنت: ":""}{lp(last)||<span style={{fontStyle:"italic"}}>لا رسائل</span>}</div>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                    {last&&<div style={{fontSize:10,color:th.text3}}>{fmtFull(last.ts)}</div>}
+                    {uc2>0&&<div style={{background:"#6366f1",color:"#fff",fontSize:10,fontWeight:700,borderRadius:10,minWidth:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 5px"}}>{uc2}</div>}
+                  </div>
+                </div>
+              );
+            })}
+            {others.filter(u=>hasDm(u)).length===0&&<div style={{color:th.text3,fontSize:13,padding:"24px 0",textAlign:"center"}}>
+              <div style={{fontSize:36,marginBottom:8}}>💬</div>
+              <div>اضغط + لبدء محادثة جديدة</div>
+            </div>}
+          </>}
+
+          {/* GROUPS tab */}
+          {tab==="groups"&&<>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <button onClick={()=>setScreen("newGroup")} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),flex:1,fontSize:13}}>+ مجموعة جديدة</button>
+              <button onClick={()=>go("join")} style={{...B(th.card2,dark?"#a5b4fc":"#6366f1",{flex:1,fontSize:13,border:`1px solid ${th.border}`})}}>🔗 انضمام</button>
+            </div>
+            {myGrps.length===0&&<div style={{color:th.text3,fontSize:13,textAlign:"center",padding:"24px 0"}}>
+              <div style={{fontSize:36,marginBottom:8}}>👥</div>
+              <div>لا توجد مجموعات بعد</div>
+            </div>}
+            {myGrps.map(g=>{const pc=g.admin===me&&g.pending?Object.keys(g.pending).length:0;return(
+              <div key={g.id} style={C()} onClick={()=>go("group",g.id)}>
+                {g.photo?<img src={g.photo} style={{width:44,height:44,borderRadius:12,objectFit:"cover",flexShrink:0}} loading="lazy"/>:<div style={{width:44,height:44,borderRadius:12,flexShrink:0,background:`linear-gradient(135deg,${uc(g.name)},${uc(g.name+"1")})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:19,color:"#fff"}}>{g.name[0]}</div>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontWeight:700,fontSize:14,color:th.text}}>{g.name}</span>
+                    {g.admin===me&&<span style={{fontSize:10,color:"#f59e0b"}}>👑</span>}
+                    {g.mods&&g.mods[me]&&g.admin!==me&&<span style={{fontSize:10,color:"#6366f1"}}>🛡</span>}
+                    {pc>0&&<span style={{background:"#fee2e2",color:"#ef4444",fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:6}}>{pc} طلب</span>}
+                  </div>
+                  <div style={{fontSize:11,color:th.text3}}>{g.members?Object.keys(g.members).length:0} عضو</div>
+                </div>
+              </div>
+            );})}
+          </>}
+
+          {/* UNREAD tab */}
+          {tab==="unread"&&<>
+            <div style={{fontSize:11,fontWeight:700,color:th.text3,letterSpacing:"1px",marginBottom:12}}>الرسائل غير المقروءة</div>
+            {Object.keys(unreadCounts).length===0&&<div style={{color:th.text3,fontSize:13,textAlign:"center",marginTop:30}}>
+              <div style={{fontSize:36,marginBottom:8}}>✅</div>
+              <div>لا توجد رسائل غير مقروءة</div>
+            </div>}
+            {Object.entries(unreadCounts).sort((a,b)=>b[1]-a[1]).map(([u,cnt])=>{const last=lastDm(u);return(
+              <div key={u} style={{...C(true)}} onClick={()=>go("dm",u)}>
+                <Av user={users[u]} size={44} online={isOnline(u)}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14,color:th.text}}>{u}</div>
+                  {last&&<div style={{fontSize:12,color:"#6366f1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:600}}>{lp(last)}</div>}
+                </div>
+                <div style={{background:"#6366f1",color:"#fff",fontSize:11,fontWeight:700,borderRadius:10,minWidth:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 6px",flexShrink:0}}>{cnt}</div>
+              </div>
+            );})}
+          </>}
+        </div>
+      </div>}
+
+      {/* ── FRIENDS ─────────────────────────────────────── */}
+      {screen==="friends"&&<div style={{flex:1,overflowY:"auto",padding:16,WebkitOverflowScrolling:"touch"}}>
+        {myPendingReqs.length>0&&<div style={{marginBottom:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:8}}>طلبات الصداقة الواردة ({myPendingReqs.length})</div>
+          {myPendingReqs.map(u=><div key={u} style={{...C(),background:dark?"#1e1e2e":"#fff7f7",border:"1px solid #fee2e2"}}>
+            <Av user={users[u]} size={40}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,color:th.text}}>{u}</div>
+              <div style={{fontSize:11,color:th.text3}}>{users[u]?.bio||""}</div>
+            </div>
+            <button onClick={()=>acceptFriendReq(u)} style={{...B("#22c55e","#fff",{padding:"7px 12px",fontSize:12})}}>قبول</button>
+            <button onClick={()=>rejectFriendReq(u)} style={{...B(th.card2,th.text2,{padding:"7px 10px",fontSize:12,border:`1px solid ${th.border}`})}}>رفض</button>
+          </div>)}
+        </div>}
+        <div style={{display:"flex",gap:6,marginBottom:14}}>
+          <input value={friendSearch} onChange={e=>setFriendSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendFriendReq(friendSearch.trim())} placeholder="ابحث عن مستخدم لإضافته..." style={{...I,flex:1,padding:"9px 12px",fontSize:13}}/>
+          <button onClick={()=>sendFriendReq(friendSearch.trim())} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)","#fff",{padding:"9px 14px"})}}>+ إضافة</button>
+        </div>
+        {/* Search results */}
+        {friendSearch.trim()&&users[friendSearch.trim()]&&friendSearch.trim()!==me&&<div style={{background:th.card2,border:`1px solid ${th.border}`,borderRadius:12,padding:12,marginBottom:12}}>
+          <div style={{fontSize:11,color:th.text3,marginBottom:8}}>نتيجة البحث</div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Av user={users[friendSearch.trim()]} size={40} online={isOnline(friendSearch.trim())}/>
+            <div style={{flex:1}}><div style={{fontWeight:600,color:th.text}}>{friendSearch.trim()}</div><div style={{fontSize:11,color:isOnline(friendSearch.trim())?"#22c55e":th.text3}}>{lastSeen(friendSearch.trim())}</div></div>
+            <button onClick={()=>go("userProfile",friendSearch.trim())} style={{...B(th.card2,th.text2,{padding:"6px 10px",fontSize:12,border:`1px solid ${th.border}`})}}>عرض</button>
+          </div>
+        </div>}
+        <div style={{fontSize:12,fontWeight:700,color:th.text3,marginBottom:8}}>أصدقائي ({myFriends.length})</div>
+        {myFriends.length===0&&<div style={{color:th.text3,fontSize:13,textAlign:"center",padding:"16px 0"}}>لم تضف أصدقاء بعد</div>}
+        {myFriends.map(u=><div key={u} style={C()}>
+          <Av user={users[u]} size={40} online={isOnline(u)}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,color:th.text}}>{u}</div>
+            <div style={{fontSize:11,color:isOnline(u)?"#22c55e":th.text3}}>{lastSeen(u)}</div>
+          </div>
+          <button onClick={()=>go("dm",u)} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)","#fff",{padding:"7px 12px",fontSize:12})}}>رسالة</button>
+          <button onClick={()=>go("userProfile",u)} style={{...B(th.card2,th.text2,{padding:"7px 10px",fontSize:12,border:`1px solid ${th.border}`})}}>عرض</button>
+          <button onClick={()=>removeFriend(u)} style={{background:"none",border:"none",cursor:"pointer",color:th.text3,fontSize:18,padding:"4px 6px"}}>✕</button>
+        </div>)}
+      </div>}
+
+      {/* ── MY PROFILE ──────────────────────────────────── */}
+      {screen==="profile"&&<div style={{flex:1,overflowY:"auto",padding:20,WebkitOverflowScrolling:"touch"}}>
+        <div style={{maxWidth:400,margin:"0 auto"}}>
+          {/* Avatar + photo */}
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{position:"relative",display:"inline-block"}}>
+              <Av user={{...md,photo:ePhoto,emoji:eEmoji}} size={96} online={true}/>
+              <button onClick={()=>phRef.current.click()} style={{position:"absolute",bottom:0,left:0,width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#6366f1,#8b5cf6)",border:`2px solid ${th.bg}`,cursor:"pointer",color:"#fff",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>📷</button>
+            </div>
+            <input ref={phRef} type="file" accept="image/*" style={{display:"none"}} onChange={hPhoto}/>
+            <div style={{fontWeight:800,fontSize:22,marginTop:12,color:th.text}}>{me}</div>
+            <div style={{fontSize:12,color:th.text3}}>عضو منذ {md?.createdAt?new Date(md.createdAt).toLocaleDateString("ar"):""}</div>
+          </div>
+
+          {/* Emoji */}
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12,color:th.text2,fontWeight:700,display:"block",marginBottom:6}}>رمز تعبيري</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {["","😀","😎","🥷","👻","🐱","🦊","🐼","🤖","👽","🦁","🌟","🔥","💎","🎮","🚀","⚡","🎸","🧠","💫","🌙","🦋","🎯","🌈"].map(e=>(
+                <button key={e} onClick={()=>setEEmoji(e)} style={{width:36,height:36,fontSize:18,borderRadius:10,border:`2px solid ${eEmoji===e?"#6366f1":th.border}`,background:eEmoji===e?"#6366f115":th.card2,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"border-color .15s"}}>{e||<span style={{fontSize:11,color:th.text3}}>لا</span>}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bio */}
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12,color:th.text2,fontWeight:700,display:"block",marginBottom:6}}>النبذة الشخصية</label>
+            <textarea value={eBio} onChange={e=>setEBio(e.target.value)} placeholder="اكتب شيئاً عن نفسك..." maxLength={120} rows={2} style={{...I,resize:"none",lineHeight:1.6}}/>
+            <div style={{fontSize:10,color:th.text3,textAlign:"left",marginTop:2}}>{eBio.length}/120</div>
+          </div>
+
+          <button onClick={saveProfile} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),width:"100%",fontSize:15,marginBottom:10,borderRadius:14}}>حفظ التغييرات ✓</button>
+
+          {/* Change Password */}
+          <div style={{marginBottom:10}}>
+            <button onClick={()=>setShowPwdForm(!showPwdForm)} style={{...B(showPwdForm?"#6366f122":th.card2,showPwdForm?"#6366f1":th.text,{width:"100%",border:`1px solid ${showPwdForm?"#6366f1":th.border}`})}}>🔑 {showPwdForm?"إخفاء":"تغيير كلمة المرور"}</button>
+            {showPwdForm&&<div className="fadein" style={{marginTop:10,background:th.card2,border:`1px solid ${th.border}`,borderRadius:14,padding:16}}>
+              <div style={{fontWeight:700,fontSize:13,color:th.text,marginBottom:12}}>🔐 تغيير كلمة المرور</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div>
+                  <label style={{fontSize:11,color:th.text2,fontWeight:700,display:"block",marginBottom:4}}>كلمة المرور الحالية</label>
+                  <input type="password" value={pwdOld} onChange={e=>setPwdOld(e.target.value)} placeholder="••••••••" style={{...I,fontSize:13}} autoComplete="current-password"/>
+                </div>
+                <div>
+                  <label style={{fontSize:11,color:th.text2,fontWeight:700,display:"block",marginBottom:4}}>كلمة المرور الجديدة</label>
+                  <input type="password" value={pwdNew} onChange={e=>setPwdNew(e.target.value)} placeholder="••••••••" style={{...I,fontSize:13}} autoComplete="new-password"/>
+                </div>
+                <div>
+                  <label style={{fontSize:11,color:th.text2,fontWeight:700,display:"block",marginBottom:4}}>تأكيد كلمة المرور الجديدة</label>
+                  <input type="password" value={pwdNew2} onChange={e=>setPwdNew2(e.target.value)} onKeyDown={e=>e.key==="Enter"&&changePassword()} placeholder="••••••••" style={{...I,fontSize:13}} autoComplete="new-password"/>
+                </div>
+              </div>
+              <button onClick={changePassword} disabled={pwdLoading} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),width:"100%",marginTop:12,fontSize:13,borderRadius:12,opacity:pwdLoading?0.7:1}}>
+                {pwdLoading?<div className="spin" style={{width:16,height:16,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%",margin:"0 auto"}}/>:"تأكيد التغيير 🔐"}
+              </button>
+            </div>}
+          </div>
+
+          <button onClick={toggleDark} style={{...B(th.card2,th.text,{width:"100%",border:`1px solid ${th.border}`,marginBottom:10})}}>
+            {dark?"☀️ وضع فاتح":"🌙 وضع داكن"}
+          </button>
+          <button onClick={logout} style={{...B(dark?"#1e1e2e":"#fff","#ef4444",{width:"100%",border:"1px solid #fecaca",marginBottom:10})}}>⏻ تسجيل الخروج</button>
+          <button onClick={deleteAccount} style={{...B(dark?"#1e1e2e":"#fff","#dc2626",{width:"100%",border:"1px solid #fca5a5",fontSize:13})}}>🗑 حذف الحساب نهائياً</button>
+        </div>
+      </div>}
+
+      {/* ── USER PROFILE ────────────────────────────────── */}
+      {screen==="userProfile"&&activeId&&users[activeId]&&<div style={{flex:1,overflowY:"auto",padding:20,WebkitOverflowScrolling:"touch"}}>
+        <div style={{maxWidth:400,margin:"0 auto",textAlign:"center"}}>
+          <div onClick={()=>users[activeId]?.photo&&setVImg(users[activeId].photo)} style={{cursor:users[activeId]?.photo?"pointer":"default",display:"inline-block",marginBottom:14}}>
+            <Av user={users[activeId]} size={100} online={isOnline(activeId)} ring={friendsWithStories.includes(activeId)} seen={isSeen(activeId)}/>
+          </div>
+          <div style={{fontWeight:800,fontSize:22,color:th.text}}>{users[activeId]?.emoji&&<span style={{marginLeft:6}}>{users[activeId].emoji}</span>}{activeId}</div>
+          <div style={{marginTop:4,color:isOnline(activeId)?"#22c55e":th.text3,fontSize:13}}>{lastSeen(activeId)}</div>
+          {users[activeId]?.bio&&<div style={{marginTop:8,color:th.text2,fontSize:14,padding:"0 20px",lineHeight:1.6}}>{users[activeId].bio}</div>}
+
+          {/* Friends stories on profile */}
+          {myFriends.includes(activeId)&&stories[activeId]&&Object.keys(stories[activeId]).length>0&&<div style={{marginTop:16,padding:"12px",background:th.card,borderRadius:14,border:`1px solid ${th.border}`}}>
+            <div style={{fontSize:12,color:th.text2,fontWeight:700,marginBottom:10}}>القصص</div>
+            <div style={{display:"flex",gap:8,overflowX:"auto",justifyContent:"center",scrollbarWidth:"none"}}>
+              {Object.entries(stories[activeId]).sort((a,b)=>b[1].ts-a[1].ts).map(([sid,s])=>(
+                <img key={sid} src={s.data} onClick={()=>{markSeen(activeId);setVStoryUser(activeId);}} style={{width:60,height:80,objectFit:"cover",borderRadius:8,cursor:"pointer",border:"2px solid #6366f1",flexShrink:0}} loading="lazy"/>
+              ))}
+            </div>
+          </div>}
+          {!myFriends.includes(activeId)&&stories[activeId]&&Object.keys(stories[activeId]).length>0&&<div style={{marginTop:12,padding:"8px 14px",background:th.card2,borderRadius:10,color:th.text3,fontSize:12,border:`1px solid ${th.border}`}}>🔒 القصص متاحة للأصدقاء فقط</div>}
+
+          <div style={{display:"flex",gap:8,marginTop:16}}>
+            <button onClick={()=>go("dm",activeId)} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),flex:1,fontSize:14,borderRadius:12}}>💬 رسالة</button>
+            {!myFriends.includes(activeId)&&activeId!==me&&<button onClick={()=>sendFriendReq(activeId)} style={{...B(th.card2,dark?"#a5b4fc":"#6366f1",{flex:1,fontSize:14,border:`1px solid ${th.border}`,borderRadius:12})}}>+ صديق</button>}
+            {myFriends.includes(activeId)&&<div style={{flex:1,textAlign:"center",padding:"10px",color:"#22c55e",fontSize:13,fontWeight:700}}>✓ صديق</div>}
+          </div>
+        </div>
+      </div>}
+
+      {/* ── NEW GROUP ────────────────────────────────────── */}
+      {screen==="newGroup"&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+        <div style={{width:"100%",maxWidth:360,textAlign:"center"}}>
+          <div style={{fontSize:52,marginBottom:14}}>👥</div>
+          <h2 style={{fontWeight:800,fontSize:20,marginBottom:8,color:th.text}}>مجموعة جديدة</h2>
+          <p style={{color:th.text3,fontSize:13,marginBottom:20}}>ستكون المشرف الرئيسي تلقائياً</p>
+          <input value={ngName} onChange={e=>setNgName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&mkGrp()} placeholder="اسم المجموعة..." style={{...I,marginBottom:14}} autoFocus maxLength={40}/>
+          <button onClick={mkGrp} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),width:"100%",fontSize:15,borderRadius:14}}>إنشاء ←</button>
+        </div>
+      </div>}
+
+      {/* ── JOIN GROUP ──────────────────────────────────── */}
+      {screen==="join"&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+        <div style={{width:"100%",maxWidth:360,textAlign:"center"}}>
+          <div style={{fontSize:52,marginBottom:14}}>🔗</div>
+          <h2 style={{fontWeight:800,fontSize:20,marginBottom:8,color:th.text}}>الانضمام لمجموعة</h2>
+          <p style={{color:th.text3,fontSize:13,marginBottom:20}}>أدخل رمز الدعوة أو معرّف المجموعة</p>
+          <input value={jCode} onChange={e=>setJCode(e.target.value)} placeholder="ادخل الرمز..." style={{...I,marginBottom:12}} autoFocus/>
+          {jErr&&<div style={{marginBottom:12,padding:"9px 14px",background:jErr.startsWith("✅")?"#f0fdf4":"#fef2f2",borderRadius:10,color:jErr.startsWith("✅")?"#22c55e":"#ef4444",fontSize:13,fontWeight:600}}>{jErr}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={joinInv} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)"),flex:1,fontSize:13,borderRadius:12}}>انضمام برمز</button>
+            <button onClick={reqJoin} style={{...B(th.card2,dark?"#a5b4fc":"#6366f1",{flex:1,fontSize:13,border:`1px solid ${th.border}`,borderRadius:12})}}>إرسال طلب</button>
+          </div>
+        </div>
+      </div>}
+
+      {/* ── DM CHAT ──────────────────────────────────────── */}
+      {screen==="dm"&&activeId&&<>
+        <MsgList msgs={msgs} me={me} isGroup={false} users={users} onImg={src=>setVImg(src)} onAv={u=>go("userProfile",u)} typingUsers={typingUsers} chatBg={currentChatBg} bubbleColor={currentBubbleColor} th={th} onRefresh={handleRefresh}
+          empty={<div style={{textAlign:"center",marginTop:60,color:th.text3}}><div style={{fontSize:44}}>👋</div><div style={{fontSize:14,marginTop:8}}>ابدأ المحادثة مع <b>{activeId}</b></div></div>}/>
+        <ChatInp ph={`رسالة إلى ${activeId}...`} onSend={sendD} onMedia={medD} onTyping={handleTyping} th={th}/>
+      </>}
+
+      {/* ── GROUP CHAT ───────────────────────────────────── */}
+      {screen==="group"&&ag&&<div style={{flex:1,display:"flex",overflow:"hidden"}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <MsgList msgs={msgs} me={me} isGroup={true} users={users} onImg={src=>setVImg(src)} onAv={u=>go("userProfile",u)} typingUsers={typingUsers} chatBg={currentChatBg} bubbleColor={currentBubbleColor} th={th} onRefresh={handleRefresh}
+            empty={<div style={{textAlign:"center",marginTop:50,color:th.text3}}>
+              <div style={{fontSize:44}}>💬</div>
+              <div style={{fontSize:14,marginTop:8}}>لا توجد رسائل بعد</div>
+              {canManage(activeId)&&<div style={{marginTop:14,padding:"14px",background:th.card,borderRadius:14,border:`1px solid ${th.border}`,display:"inline-block"}}>
+                <div style={{color:"#6366f1",fontSize:12,fontWeight:700,marginBottom:4}}>🔗 رمز الدعوة</div>
+                <div style={{fontFamily:"monospace",color:"#22c55e",fontSize:15,letterSpacing:"2px",fontWeight:700}}>{ag.inviteCode}</div>
+              </div>}
+            </div>}/>
+          <ChatInp ph={`رسالة في ${ag.name}...`} onSend={sendG} onMedia={medG} onTyping={handleTyping} th={th}/>
+        </div>
+
+        {/* Group panel */}
+        {panel&&<div style={{width:230,background:th.topbar,borderRight:`1px solid ${th.border}`,overflowY:"auto",flexShrink:0,WebkitOverflowScrolling:"touch"}}>
+          <div style={{padding:"12px 14px",fontWeight:700,fontSize:11,color:th.text3,borderBottom:`1px solid ${th.border}`,letterSpacing:"1px"}}>
+            {isGroupAdmin(activeId)?"👑 الإدارة":isGroupMod(activeId)?"🛡 المشرف المساعد":"👥 الأعضاء"}
+          </div>
+
+          {/* Admin/mod controls */}
+          {canManage(activeId)&&<div style={{padding:"10px 14px",borderBottom:`1px solid ${th.border}`}}>
+            {/* Edit group - admin only */}
+            {isGroupAdmin(activeId)&&<>
+              {!groupEdit?<button onClick={()=>{setGroupEdit(true);setGNewName(ag.name);}} style={{...B(th.card2,th.text,{width:"100%",fontSize:12,border:`1px solid ${th.border}`,marginBottom:8})}}>✏️ تعديل المجموعة</button>
+              :<div>
+                <input value={gNewName} onChange={e=>setGNewName(e.target.value)} placeholder="اسم جديد..." style={{...I,fontSize:12,marginBottom:6}} maxLength={40}/>
+                <div style={{display:"flex",gap:4,marginBottom:6}}>
+                  <button onClick={()=>gPhRef.current.click()} style={{...B(th.card2,th.text,{flex:1,fontSize:11,border:`1px solid ${th.border}`,padding:"6px"})}}>📷 صورة</button>
+                  <input ref={gPhRef} type="file" accept="image/*" style={{display:"none"}} onChange={hGPhoto}/>
+                  {gNewPhoto&&<img src={gNewPhoto} style={{width:32,height:32,borderRadius:6,objectFit:"cover"}} loading="lazy"/>}
+                </div>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={()=>saveGroupEdit(ag.id)} style={{...B("linear-gradient(135deg,#6366f1,#8b5cf6)","#fff",{flex:1,fontSize:11,padding:"7px"})}}>حفظ</button>
+                  <button onClick={()=>setGroupEdit(false)} style={{...B(th.card2,th.text,{flex:1,fontSize:11,padding:"7px",border:`1px solid ${th.border}`})}}>إلغاء</button>
+                </div>
+              </div>}
+            </>}
+
+            {/* Invite code - admin only */}
+            {isGroupAdmin(activeId)&&<>
+              <div style={{fontSize:10,color:th.text3,fontWeight:700,marginBottom:4,marginTop:6}}>رمز الدعوة</div>
+              <div style={{fontFamily:"monospace",fontSize:11,padding:"7px 10px",background:th.card2,borderRadius:8,color:ag.inviteActive?"#22c55e":th.text3,wordBreak:"break-all",marginBottom:6,border:`1px solid ${th.border}`}}>{ag.inviteActive?ag.inviteCode:"🔒 مغلق"}</div>
+              <div style={{fontSize:10,color:th.text3,marginBottom:8}}>ID: <span style={{color:"#6366f1",fontFamily:"monospace"}}>{ag.id}</span></div>
+              <div style={{display:"flex",gap:5}}>
+                {ag.inviteActive&&<button onClick={()=>{try{navigator.clipboard.writeText(ag.inviteCode);}catch{}setCopied(true);setTimeout(()=>setCopied(false),2000);toast("تم نسخ الرمز ✓","success");}} style={{flex:1,padding:"6px",background:copied?"#f0fdf4":th.card2,border:`1px solid ${copied?"#22c55e":th.border}`,borderRadius:8,color:copied?"#22c55e":th.text2,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{copied?"✓ تم":"نسخ"}</button>}
+                <button onClick={()=>togInv(ag.id,ag.inviteActive)} style={{flex:1,padding:"6px",background:th.card2,border:`1px solid ${th.border}`,borderRadius:8,color:ag.inviteActive?"#ef4444":"#22c55e",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{ag.inviteActive?"إغلاق":"فتح"}</button>
+              </div>
+              <button onClick={()=>deleteGroup(ag.id)} style={{...B(dark?"#1e1e2e":"#fff","#ef4444",{width:"100%",marginTop:8,fontSize:11,border:"1px solid #fecaca"})}}>🗑 حذف المجموعة</button>
+            </>}
+
+            {/* Add member */}
+            <div style={{marginTop:10}}>
+              <AddMemberInline gid={ag.id} onAdd={addMember} th={th} I={I} B={B}/>
+            </div>
+          </div>}
+
+          {/* Pending requests */}
+          {canManage(activeId)&&agP.length>0&&<div style={{padding:"8px 14px",borderBottom:`1px solid ${th.border}`}}>
+            <div style={{fontSize:10,color:"#ef4444",fontWeight:700,marginBottom:6}}>طلبات ({agP.length})</div>
+            {agP.map(u=><div key={u} style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+              <Av user={users[u]} size={24}/>
+              <span style={{flex:1,fontSize:12,color:th.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u}</span>
+              <button onClick={()=>approve(ag.id,u)} style={{background:"#f0fdf4",border:"none",borderRadius:6,padding:"4px 7px",cursor:"pointer",color:"#22c55e",fontSize:13}}>✓</button>
+              <button onClick={()=>reject(ag.id,u)} style={{background:"#fef2f2",border:"none",borderRadius:6,padding:"4px 7px",cursor:"pointer",color:"#ef4444",fontSize:13}}>✗</button>
+            </div>)}
+          </div>}
+
+          {/* Members list */}
+          <div style={{padding:"8px 14px"}}>
+            <div style={{fontSize:10,color:th.text3,fontWeight:700,marginBottom:8}}>الأعضاء ({agM.length})</div>
+            {agM.map(u=>{
+              const isMod=ag.mods&&ag.mods[u];
+              return<div key={u} style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <button onClick={()=>go("userProfile",u)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}><Av user={users[u]} size={34} online={isOnline(u)}/></button>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:u===ag.admin||isMod?700:400,color:th.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u}</div>
+                  <div style={{fontSize:9,color:u===ag.admin?"#f59e0b":isMod?"#6366f1":isOnline(u)?"#22c55e":th.text3}}>
+                    {u===ag.admin?"👑 مشرف رئيسي":isMod?"🛡 مشرف مساعد":isOnline(u)?"متصل":lastSeen(u)}
+                  </div>
+                </div>
+                {/* Admin actions on members */}
+                {isGroupAdmin(activeId)&&u!==me&&<div style={{display:"flex",gap:3}}>
+                  <button onClick={()=>toggleMod(ag.id,u)} title={isMod?"إزالة المشرف":"ترقية لمشرف"} style={{background:"none",border:"none",cursor:"pointer",color:isMod?"#6366f1":th.text3,fontSize:14,padding:"2px 4px"}}>🛡</button>
+                  <button onClick={()=>kick(ag.id,u)} title="إزالة من المجموعة" style={{background:"none",border:"none",cursor:"pointer",color:th.text3,fontSize:14,padding:"2px 4px"}}>🚫</button>
+                </div>}
+                {/* Mod can kick non-admins */}
+                {isGroupMod(activeId)&&!isGroupAdmin(activeId)&&u!==me&&u!==ag.admin&&!isMod&&
+                  <button onClick={()=>kick(ag.id,u)} style={{background:"none",border:"none",cursor:"pointer",color:th.text3,fontSize:14,padding:"2px 4px"}}>🚫</button>}
+              </div>;
+            })}
+          </div>
+        </div>}
+      </div>}
+    </div>
+  );
+}
+
+function Root(){
+  const[r,setR]=useState(window.__fbReady||false);
+  useEffect(()=>{if(!window.__fbReady){const h=()=>setR(true);window.addEventListener('fbReady',h);return()=>window.removeEventListener('fbReady',h);}else setR(true);},[]);
+  const dark=window.matchMedia?.("(prefers-color-scheme:dark)").matches;
+  if(!r)return<div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:dark?"linear-gradient(160deg,#0a0a14,#0d0d1a)":"linear-gradient(160deg,#f0f4ff,#e8eeff)",flexDirection:"column",gap:16}}>
+    <div style={{width:64,height:64,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,boxShadow:"0 8px 24px rgba(99,102,241,.35)"}}>💬</div>
+    <div style={{color:dark?"#a5b4fc":"#6366f1",fontSize:20,fontWeight:800}}>نبضة</div>
+    <div style={{width:32,height:32,border:"3px solid #6366f1",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+  </div>;
+  return<App/>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+</body>
+</html>
