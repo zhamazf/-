@@ -1,0 +1,114 @@
+/* ═══════════════════════════════════════════
+   نبضة Chat v4 — style.css
+   ═══════════════════════════════════════════ */
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body,#app{height:100%;overflow:hidden}
+body{font-family:'Segoe UI','Cairo',Tahoma,sans-serif;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+input,textarea,button{font-family:inherit}
+input:focus,textarea:focus{outline:none}
+button{cursor:pointer}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:#6366f144;border-radius:3px}
+.no-scrollbar{scrollbar-width:none}
+.no-scrollbar::-webkit-scrollbar{display:none}
+
+/* Tab */
+.tab{flex:1;padding:10px 4px;border:none;background:transparent;font-size:12px;font-family:inherit;cursor:pointer;border-bottom:2.5px solid transparent;font-weight:600;transition:color .15s,border-color .15s}
+
+/* Animations */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0}}
+@keyframes storyProgress{from{width:0}to{width:100%}}
+@keyframes cooldown{from{width:100%}to{width:0%}}
+
+/* Classes */
+.fadein{animation:fadeUp .2s ease}
+.slideup{animation:slideUp .25s ease}
+.spin{animation:spin 1s linear infinite}
+.msg-item{transition:transform .15s}
+
+/* Typing dots */
+.typing span{display:inline-block;width:7px;height:7px;border-radius:50%;margin:0 2px;animation:blink 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+
+/* Pull to refresh */
+.ptr-spinner{display:flex;align-items:center;justify-content:center;padding:10px;color:#6366f1;font-size:13px;gap:6px}
+
+/* Story progress bar */
+.story-bar{height:3px;background:#6366f144;border-radius:2px;overflow:hidden}
+.story-bar-fill{height:100%;background:#fff;border-radius:2px}
+
+/* Toast */
+.toast-item{animation:toastIn .25s ease;color:#fff;padding:9px 18px;border-radius:22px;font-size:13px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.22);white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
+.toast-item.out{animation:toastOut .25s ease forwards}
+
+/* Cooldown bar */
+.cooldown-bar{height:2px;overflow:hidden}
+.cooldown-fill{height:100%;background:#6366f1;animation:cooldown var(--spam-delay,1200ms) linear forwards}
+
+/* Toast host */
+#toast-host{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+
+/* Loading screen */
+#loading-screen{height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+
+/* Messages */
+.msg-row{display:flex;align-items:flex-end;gap:6px;margin-bottom:3px;padding:0 2px;animation:fadeUp .2s ease}
+.msg-row.mine{flex-direction:row-reverse}
+.bubble{line-height:1.5;font-size:14px;word-break:break-word;white-space:pre-wrap}
+.bubble.mine{color:#fff;box-shadow:0 2px 8px rgba(99,102,241,.25)}
+.bubble.theirs{box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.bubble-meta{font-size:10px;margin-top:2px}
+
+/* Chat input */
+.chat-input-field{flex:1;border-radius:22px;border:1.5px solid;font-size:14px;direction:rtl;resize:none;overflow:hidden;min-height:40px;max-height:120px;line-height:1.4;box-sizing:border-box;padding:10px 14px;transition:border-color .2s}
+.send-btn{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(99,102,241,.4);border:none}
+
+/* Media tray buttons */
+.media-btn{flex:1;padding:12px 8px;border-radius:14px;border:1px solid;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-family:inherit}
+.media-btn-ico{font-size:26px}
+
+/* Overlay / sheet */
+.overlay{position:fixed;inset:0;z-index:990;display:flex;align-items:flex-end;justify-content:center}
+.overlay-bg{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+.bottom-sheet{width:100%;max-width:500px;border-radius:20px 20px 0 0;padding:24px;position:relative;z-index:1;animation:slideUp .25s ease}
+.sheet-handle{width:40px;height:4px;border-radius:2px;margin:0 auto 16px}
+
+/* Group panel */
+.group-panel{width:230px;flex-shrink:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* Chat list item */
+.chat-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:14px;cursor:pointer;margin-bottom:6px;border:1px solid;transition:opacity .12s}
+.chat-item:active{opacity:.8}
+
+/* Avatar */
+.av-wrap{position:relative;display:inline-flex;flex-shrink:0}
+.av-img{border-radius:50%;object-fit:cover;display:block}
+.av-text{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;user-select:none;flex-shrink:0}
+.av-online-dot{position:absolute;bottom:1px;left:1px;border-radius:50%;border:2px solid white;background:#22c55e;min-width:8px;min-height:8px}
+.av-ring{padding:2px;border-radius:50%;display:inline-flex}
+
+/* Unread badge */
+.unread-badge{background:#6366f1;color:#fff;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px}
+
+/* Story viewer */
+#story-viewer-overlay{position:fixed;inset:0;background:#000;z-index:999;display:flex;flex-direction:column}
+.story-progress-row{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;gap:3px;padding:10px 12px 6px}
+.story-header{position:absolute;top:22px;left:0;right:0;z-index:2;padding:0 12px;display:flex;align-items:center;gap:8px}
+.story-tap-zones{position:absolute;inset:0;display:flex}
+.story-tap-zone{flex:1}
+
+/* Auth */
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;direction:rtl}
+.auth-card{width:100%;max-width:360px;border-radius:24px;padding:40px 28px;box-shadow:0 20px 60px rgba(0,0,0,.15)}
+
+/* Field */
+.field-input{width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid;font-size:14px;font-family:inherit;direction:rtl;box-sizing:border-box}

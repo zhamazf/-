@@ -1,0 +1,36 @@
+{
+  "name": "نبضة Chat",
+  "short_name": "نبضة",
+  "description": "تطبيق الدردشة الفوري - تواصل مع أصدقائك بسهولة",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f0f2f5",
+  "theme_color": "#6366f1",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["social", "communication"],
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "فتح نبضة",
+      "short_name": "نبضة",
+      "description": "فتح التطبيق",
+      "url": "/",
+      "icons": [{ "src": "icon.png", "sizes": "192x192" }]
+    }
+  ]
+}
