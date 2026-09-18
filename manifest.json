@@ -1,0 +1,78 @@
+{
+  "id": "/",
+  "name": "نبضة Chat",
+  "short_name": "نبضة",
+  "description": "تطبيق الدردشة الفوري — تواصل مع أصدقائك بسهولة وأمان",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0d0d1a",
+  "theme_color": "#6366f1",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["social", "communication"],
+
+  "prefer_related_applications": false,
+
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+
+  "handle_links": "preferred",
+
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+
+  "shortcuts": [
+    {
+      "name": "المحادثات الخاصة",
+      "short_name": "الخاصة",
+      "description": "فتح المحادثات الخاصة",
+      "url": "/?tab=chats",
+      "icons": [{ "src": "icon.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "المجموعات",
+      "short_name": "مجموعات",
+      "description": "فتح المجموعات",
+      "url": "/?tab=groups",
+      "icons": [{ "src": "icon.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

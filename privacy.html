@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#6366f1"/>
+<title>سياسة الخصوصية — نبضة</title>
+<style>
+  :root{
+    --bg:#f0f2f5; --card:#ffffff; --border:#e5e7eb; --text:#1f2937; --text2:#6b7280; --accent:#6366f1;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0a0a14; --card:#12121e; --border:#1e1e30; --text:#e0e0f0; --text2:#a1a1b5; --accent:#818cf8; }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"Tajawal","Segoe UI",system-ui,sans-serif;
+    line-height:1.8; padding:24px 16px 60px;
+  }
+  .wrap{max-width:640px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:28px 22px}
+  h1{font-size:22px;font-weight:800;margin:0 0 4px}
+  .updated{font-size:12px;color:var(--text2);margin-bottom:24px}
+  h2{font-size:16px;font-weight:800;margin:28px 0 8px;color:var(--accent)}
+  p,li{font-size:14px;color:var(--text);margin:6px 0}
+  ul{padding-inline-start:20px;margin:6px 0}
+  a{color:var(--accent);font-weight:700;text-decoration:none}
+  a:hover,a:focus{text-decoration:underline}
+  .note{background:rgba(99,102,241,.08);border:1px solid var(--accent);border-radius:12px;padding:12px 14px;font-size:13px;margin-top:24px}
+  .back{display:inline-block;margin-bottom:18px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← رجوع إلى نبضة</a>
+  <div class="card">
+    <h1>سياسة الخصوصية</h1>
+    <div class="updated">آخر تحديث: تحدَّث هذا التاريخ يدوياً عند أي تعديل لهذه السياسة</div>
+
+    <p>هذه السياسة تشرح البيانات التي يجمعها تطبيق «نبضة» (Nabda)، وكيف تُستخدم وتُخزَّن، وحقوقك المتعلقة بها.</p>
+
+    <h2>١. البيانات التي نجمعها</h2>
+    <ul>
+      <li>بيانات الحساب: اسم المستخدم، البريد الإلكتروني، وكلمة المرور (مُدارة عبر Firebase Authentication ولا نرى كلمة المرور نفسها بشكل مباشر).</li>
+      <li>الصورة الشخصية، إن أضفتها.</li>
+      <li>محتوى المحادثات: الرسائل النصية، الصور، الفيديوهات، والرسائل الصوتية التي ترسلها أو تستقبلها.</li>
+      <li>القصص (Stories) التي تنشرها.</li>
+      <li>حالة الاتصال (متصل الآن / آخر ظهور).</li>
+      <li>تفضيل المظهر (فاتح/داكن) — يُحفظ محلياً على جهازك فقط عبر localStorage ولا يُرسل إلى أي خادم.</li>
+    </ul>
+
+    <h2>٢. أين تُخزَّن بياناتك</h2>
+    <p>تُخزَّن بيانات الحساب والمحادثات على خوادم Firebase Realtime Database التابعة لـ Google، ضمن مشروع التطبيق الخاص بنا. لا نستخدم أي خادم أو جهة تخزين أخرى.</p>
+
+    <h2>٣. من يستطيع الوصول إليها</h2>
+    <p>المحادثات محمية بقواعد أمان Firebase (Security Rules) بحيث لا يمكن لأي مستخدم آخر الوصول إلى محادثات ليست له. مع ذلك، <strong>الرسائل غير مشفّرة تشفيراً طرفياً (End-to-End Encryption)</strong> — بمعنى أن مشغّل التطبيق يملك تقنياً القدرة على الوصول إلى البيانات المخزّنة عبر لوحة تحكم Firebase، تماماً كأي تطبيق دردشة اعتيادي غير مشفّر بالكامل. لا نطّلع على محادثاتك بشكل روتيني ولا نشاركها مع أي طرف ثالث.</p>
+
+    <h2>٤. هل نستخدم أدوات تتبع أو إعلانات؟</h2>
+    <p>لا. لا يحتوي التطبيق على أي أدوات تحليلات (Analytics)، تتبّع إعلاني، بكسلات تتبع، أو أكواد تابعة لجهات خارجية. الاتصال الشبكي يقتصر فقط على خدمات Firebase/Google اللازمة لتشغيل الدردشة والمصادقة.</p>
+
+    <h2>٥. لا نستخدم كوكيز تتبّع</h2>
+    <p>نستخدم فقط localStorage على جهازك لحفظ تفضيل المظهر (فاتح/داكن)، وهذا ليس كوكي تتبع ولا يُرسل لأي خادم، لذلك لا حاجة لشريط "موافقة الكوكيز".</p>
+
+    <h2>٦. حذف الحساب والبيانات</h2>
+    <p>يمكنك حذف حسابك نهائياً في أي وقت من داخل التطبيق (الملف الشخصي ← حذف الحساب نهائياً). يؤدي هذا إلى حذف بياناتك المرتبطة بالحساب من قاعدة البيانات.</p>
+
+    <h2>٧. الأطفال</h2>
+    <p>هذا التطبيق غير موجَّه للأطفال دون سن ١٣ عاماً، ولا نجمع بيانات عن قصد من مستخدمين نعلم أنهم دون هذا السن.</p>
+
+    <h2>٨. تغييرات على هذه السياسة</h2>
+    <p>قد تُحدَّث هذه السياسة من وقت لآخر. سنعرض تاريخ آخر تحديث أعلى الصفحة.</p>
+
+    <h2>٩. تواصل معنا</h2>
+    <p>لأي استفسار بخصوص خصوصيتك أو بياناتك: <a href="mailto:zero0sh4869@gmail.com">zero0sh4869@gmail.com</a></p>
+
+    <div class="note">⚠️ استبدل البريد الإلكتروني أعلاه ببريد فعلي قبل النشر — هذا حالياً نص عنصر نائب (placeholder).</div>
+  </div>
+</div>
+</body>
+</html>
