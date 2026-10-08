@@ -565,6 +565,7 @@
       S.me=res.username;
       S.meUid=res.uid || FB.authCurrentUser()?.uid || null;
       Chat.goOnline(S.meUid); UI.requestNotifPerm(); startDataListeners(); go('home');
+      _handleDeepLink();
     }
 
     submitBtn.addEventListener('click', doSubmit);
@@ -1381,7 +1382,7 @@
     const delBtn=UI.el('button',`width:100%;padding:11px;border:1px solid #fca5a5;border-radius:12px;background:${UI.isDark()?'#1e1e2e':'#fff'};color:#dc2626;font-family:inherit;font-size:13px;cursor:pointer`);delBtn.textContent='🗑 حذف الحساب نهائياً';
     delBtn.addEventListener('click',async()=>{
       if(!await UI.confirmDialog('هل تريد حذف حسابك نهائياً؟',{confirmText:'حذف الحساب',cancelText:'إلغاء',danger:true}))return;
-      const pwd=prompt('أدخل كلمة مرورك للتأكيد:'); if(!pwd)return;
+      let pwd=''; if(Auth.hasPassword()){pwd=prompt('أدخل كلمة مرورك للتأكيد:'); if(!pwd)return;}
       // Build dm partners list as uid array (matches auth.js deleteAccount signature)
       const dmPartners = Object.keys(S.usersByName)
         .filter(u => u !== S.me)
@@ -1571,7 +1572,7 @@
     ['linear-gradient(135deg,#6366f1,#8b5cf6)','linear-gradient(135deg,#ec4899,#f43f5e)','linear-gradient(135deg,#f59e0b,#f97316)','linear-gradient(135deg,#10b981,#059669)','linear-gradient(135deg,#3b82f6,#2563eb)','linear-gradient(135deg,#8b5cf6,#7c3aed)','linear-gradient(135deg,#000,#374151)','linear-gradient(135deg,#ef4444,#dc2626)'].forEach(c=>{const sw=UI.el('div','width:36px;height:36px;border-radius:10px;cursor:pointer;transition:transform .15s');sw.style.background=c;sw.style.border=curBC===c?'3px solid #fff':'3px solid transparent';sw.style.boxShadow='0 2px 8px rgba(0,0,0,.2)';if(curBC===c)sw.style.transform='scale(1.1)';sw.addEventListener('click',()=>{UI.saveBubbleColor(cid,c);UI.toast('تم الحفظ','success');_reapplyChatStyles();ov.remove();});bcRow.appendChild(sw);});sheet.appendChild(bcRow);
     const bgLbl=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:8px`);bgLbl.textContent='خلفية المحادثة';sheet.appendChild(bgLbl);const bgRow=UI.el('div','display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px');const curBG=UI.getChatBgs()[cid]||'';
     [null,'#f0fdf4','#fdf2f8','#eff6ff','#fefce8','#f0f4ff','#fef9f0'].forEach(c=>{const sw=UI.el('div','width:36px;height:36px;border-radius:10px;cursor:pointer');sw.style.background=c||th().bg;sw.style.border=`3px solid ${(curBG||(c||''))===(c||'')?'#6366f1':th().border}`;sw.style.boxShadow='0 1px 4px rgba(0,0,0,.1)';if(!c){const ic=UI.el('span','display:flex;align-items:center;justify-content:center;height:100%;font-size:16px');ic.textContent='🚫';sw.appendChild(ic);}sw.addEventListener('click',()=>{UI.saveChatBg(cid,c||'');UI.toast('تم الحفظ','success');_reapplyChatStyles();ov.remove();});bgRow.appendChild(sw);});
-    const bgUpload=document.createElement('input');bgUpload.type='file';bgUpload.accept='image/*';bgUpload.style.display='none';bgUpload.addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;const d=await UI.fileToBase64(f);UI.saveChatBg(cid,d);UI.toast('تم الحفظ','success');_reapplyChatStyles();ov.remove();e.target.value='';});
+    const bgUpload=document.createElement('input');bgUpload.type='file';bgUpload.accept='image/*';bgUpload.style.display='none';bgUpload.addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{const d=await UI.fileToBase64(f);if(UI.saveChatBg(cid,d)===false){UI.toast('الصورة كبيرة، اختر صورة أصغر','error');e.target.value='';return;}UI.toast('تم الحفظ','success');_reapplyChatStyles();ov.remove();e.target.value='';}catch(err){UI.toast(err.message||'خطأ في الصورة','error');e.target.value='';}});
     const bgPhBtn=UI.el('button',`width:36px;height:36px;border-radius:10px;background:${th().card2};border:1px dashed ${th().border};cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center`);bgPhBtn.textContent='📷';bgPhBtn.addEventListener('click',()=>bgUpload.click());bgRow.appendChild(bgPhBtn);bgRow.appendChild(bgUpload);sheet.appendChild(bgRow);ov.appendChild(sheet);APP.appendChild(ov);
   }
 
@@ -1594,7 +1595,33 @@
   /* ═══════════════════════════════════════════════════════════
      BOOT
   ═══════════════════════════════════════════════════════════ */
+  /* ── Deep links: ?join=CODE (دعوة مجموعة) و ?tab=chats|groups|unread ── */
+  let _deepLink = null;
+  try {
+    const qp = new URLSearchParams(location.search);
+    const j  = (qp.get('join') || '').trim();
+    const t  = qp.get('tab');
+    const validTab  = ['chats', 'groups', 'unread'].includes(t) ? t : '';
+    const validJoin = /^[A-Za-z0-9_-]{1,64}$/.test(j) ? j : '';
+    if (validTab) S.tab = validTab;
+    if (validJoin) _deepLink = { join: validJoin };
+    if (qp.has('join') || qp.has('tab')) history.replaceState(null, '', location.pathname);
+  } catch (e) {}
+
+  async function _handleDeepLink() {
+    const d = _deepLink;
+    if (!d || !d.join || !S.me || !S.meUid) return;
+    _deepLink = null; // مرة واحدة فقط
+    if (!await UI.confirmDialog('الانضمام للمجموعة عبر رابط الدعوة؟', { confirmText: 'انضمام' })) return;
+    const res = await Groups.joinByInvite(S.me, d.join);
+    if (res.error) { UI.toast(res.error, 'error'); return; }
+    if (res.gid) { _openGroupListener(res.gid); go('group', res.gid); }
+  }
+
   UI.applyTheme();
+
+  // جلسة محفوظة محلياً لكن Firebase Auth منتهية/مسجّلة خروج → ارجع لشاشة الدخول
+  if (S.me && !FB.authCurrentUser()) { Auth.clearSession(); S.me = null; }
 
   if (S.me) {
     // Recover uid from Auth if possible
@@ -1608,10 +1635,12 @@
       if (Object.keys(S.users).length > 0 || Object.keys(S.groups || {}).length > 0) {
         UI.showApp();
         go('home');
+        _handleDeepLink();
       } else if (Date.now() - checkStart > 8000) {
         // Timeout — show app anyway to avoid infinite spinner
         UI.showApp();
         go('home');
+        _handleDeepLink();
       } else {
         setTimeout(checkData, 300);
       }

@@ -99,19 +99,29 @@ window.Auth = (function () {
       return { error: 'هذا الاسم محجوز، اختر اسماً آخر' };
     if (!email)                return { error: 'أدخل بريدك الإلكتروني' };
     if (!password)             return { error: 'أدخل كلمة المرور' };
-    if (password.length < 8)   return { error: 'كلمة المرور قصيرة (8 أحرف على الأقل)' };
-    if (!/[A-Za-z]/.test(password) && !/[\u0600-\u06FF]/.test(password))
-                               return { error: 'كلمة المرور يجب أن تحتوي على حروف' };
+    const pwProblem = _passwordProblem(password);
+    if (pwProblem)             return { error: pwProblem };
 
-    // التحقق من عدم وجود username مسبقاً (keyed by username → uid)
-    const existingUid = await FB.get(`usernames/${username}`);
-    if (existingUid) return { error: 'اسم المستخدم محجوز، اختر اسماً آخر' };
+    // ملاحظة: فحص تكرار الاسم يتم بعد إنشاء الحساب (وبشكل ذري) لأن قراءة usernames
+    // تتطلب مصادقة — الفحص السابق قبل تسجيل الدخول كان يفشل بصمت ويرجع "غير موجود" دائماً.
+    let cred;
+    try {
+      cred = await FB.authRegister(email, password);
+    } catch (e) {
+      return { error: friendlyError(e.code) };
+    }
+    const uid = cred.user.uid;
+    let claimed = null; // الاسم الذي حجزناه (للتراجع عند الفشل)
 
     try {
-      const cred = await FB.authRegister(email, password);
-      const uid  = cred.user.uid;
+      // ── 1. احجز username → uid بشكل ذري (لا يكتب فوق اسم محجوز) ──
+      if (!(await _claimUsername(username, uid))) {
+        await _abortRegistration(cred.user, null);
+        return { error: 'اسم المستخدم محجوز، اختر اسماً آخر' };
+      }
+      claimed = username;
 
-      // ── البروفايل مُفتَّح بالـ uid (وليس username) ──
+      // ── 2. البروفايل مُفتَّح بالـ uid (وليس username) ──
       await FB.set(`users/${uid}`, {
         uid,
         username,
@@ -122,15 +132,37 @@ window.Auth = (function () {
         createdAt: Date.now()
       });
 
-      // ── index: username → uid (للبحث والتحقق من التكرار) ──
-      await FB.set(`usernames/${username}`, uid);
-
       saveSession(username);
       return { ok: true, username, uid };
 
     } catch (e) {
+      // فشل بعد إنشاء الحساب → تراجع كامل حتى لا يبقى حساب يتيم بدون بروفايل
+      await _abortRegistration(cred.user, claimed);
       return { error: friendlyError(e.code) };
     }
+  }
+
+  /* ── Helpers: password policy / username claim / rollback ─────── */
+  function _passwordProblem(pw) {
+    if (pw.length < 8) return 'كلمة المرور قصيرة (8 أحرف على الأقل)';
+    if (!/[A-Za-z]/.test(pw) && !/[؀-ۿ]/.test(pw))
+      return 'كلمة المرور يجب أن تحتوي على حروف';
+    return null;
+  }
+
+  // يحجز usernames/{name} → uid فقط إذا كان فارغاً. true إذا صار الاسم لنا.
+  async function _claimUsername(username, uid) {
+    const path = `usernames/${username}`;
+    const r = await FB.transaction(path, cur => (cur === null || cur === undefined) ? uid : undefined);
+    if (r && r.ok) return r.value === uid;
+    // الـ transaction فشل (مثلاً رفض صلاحيات لأن الاسم محجوز) → افحص القيمة الحالية
+    return (await FB.get(path)) === uid;
+  }
+
+  async function _abortRegistration(user, claimedUsername) {
+    if (claimedUsername) { try { await FB.del(`usernames/${claimedUsername}`); } catch {} }
+    try { await user.delete(); }
+    catch { try { await FB.authSignOut(); } catch {} }
   }
 
   /* ── Brute force protection ─────────────────────────────────── */
@@ -181,7 +213,11 @@ window.Auth = (function () {
 
       // جلب البروفايل من users/{uid}
       const profile = await FB.get(`users/${uid}`);
-      if (!profile) return { error: 'لم يُعثر على ملفك الشخصي، تواصل مع الدعم' };
+      if (!profile) {
+        // لا نترك المستخدم مسجّلاً بدون بروفايل (حالة نصف-دخول)
+        try { await FB.authSignOut(); } catch {}
+        return { error: 'لم يُعثر على ملفك الشخصي، تواصل مع الدعم' };
+      }
 
       _clearLoginAttempts(email);
       saveSession(profile.username);
@@ -201,10 +237,20 @@ window.Auth = (function () {
 
   /* ── Change password ─────────────────────────────────────────── */
   async function changePassword(currentPassword, newPassword, confirmPassword) {
+    // حسابات Google ما عندها كلمة مرور أصلاً
+    if (!FB.authHasPassword())
+      return { error: 'حسابك مرتبط بـ Google ولا توجد له كلمة مرور' };
+
+    // نفس معالجة التسجيل/الدخول (trim) وإلا ما يقدر يدخل بالكلمة الجديدة
+    currentPassword = (currentPassword || '').trim();
+    newPassword     = (newPassword     || '').trim();
+    confirmPassword = (confirmPassword || '').trim();
+
     if (!currentPassword || !newPassword || !confirmPassword)
       return { error: 'يرجى تعبئة جميع الحقول' };
-    if (newPassword.length < 6)
-      return { error: 'كلمة المرور الجديدة قصيرة (6 أحرف على الأقل)' };
+    const pwProblem = _passwordProblem(newPassword);
+    if (pwProblem)
+      return { error: pwProblem };
     if (newPassword !== confirmPassword)
       return { error: 'كلمتا المرور غير متطابقتين' };
     if (newPassword === currentPassword)
@@ -246,9 +292,10 @@ window.Auth = (function () {
     const email = FB.authCurrentUser()?.email;
     if (!email) return { error: 'يرجى تسجيل الخروج والدخول مجدداً' };
 
-    // إعادة المصادقة أولاً
+    // إعادة المصادقة أولاً: كلمة مرور للحسابات العادية، نافذة Google لحسابات Google
     try {
-      await FB.authReauth(email, currentPassword);
+      if (FB.authHasPassword()) await FB.authReauth(email, currentPassword);
+      else                      await FB.authReauthGoogle();
     } catch (e) {
       return { error: friendlyError(e.code) };
     }
@@ -354,25 +401,31 @@ window.Auth = (function () {
         .slice(0, 20);
       if (!baseUsername || baseUsername.length < 2) baseUsername = 'user' + Date.now().toString().slice(-4);
 
-      // تفادي التكرار بإضافة رقم
+      // احجز اسماً فريداً بشكل ذري (يضيف رقماً عند التكرار)
       let finalUsername = baseUsername;
       let attempt = 0;
-      while (await FB.get(`usernames/${finalUsername}`)) {
+      while (!(await _claimUsername(finalUsername, uid))) {
         attempt++;
-        finalUsername = `${baseUsername}${attempt}`;
+        if (attempt > 30) return { error: 'تعذّر إنشاء اسم مستخدم، حاول لاحقاً' };
+        finalUsername = `${baseUsername.slice(0, 17)}${attempt}`;
       }
 
-      await FB.set(`users/${uid}`, {
-        uid,
-        username:  finalUsername,
-        email:     user.email || '',
-        emoji:     '',
-        bio:       '',
-        photo:     user.photoURL || null,
-        createdAt: Date.now(),
-        provider:  'google',
-      });
-      await FB.set(`usernames/${finalUsername}`, uid);
+      try {
+        await FB.set(`users/${uid}`, {
+          uid,
+          username:  finalUsername,
+          email:     user.email || '',
+          emoji:     '',
+          bio:       '',
+          photo:     user.photoURL || null,
+          createdAt: Date.now(),
+          provider:  'google',
+        });
+      } catch (e) {
+        // تراجع عن حجز الاسم حتى لا يبقى محجوزاً بلا حساب
+        try { await FB.del(`usernames/${finalUsername}`); } catch {}
+        return { error: 'تعذّر إنشاء الحساب، حاول مجدداً' };
+      }
 
       saveSession(finalUsername);
       return { ok: true, username: finalUsername, uid, isNew: true };
@@ -493,6 +546,7 @@ window.Auth = (function () {
     updateEmail,        // v2
     resetPassword,
     deleteAccount,
+    hasPassword: () => FB.authHasPassword(),
     getProfile,
     uidFromUsername,
     blockUser,          // v2

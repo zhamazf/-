@@ -58,6 +58,15 @@ window.FB = (function () {
     _auth    = window.firebase.auth();
     _storage = window.firebase.storage();
 
+    // انتظر استعادة الجلسة المحفوظة قبل إكمال الإقلاع، وإلا تكون authCurrentUser()
+    // فارغة لحظة الفتح وتتعطل البيانات المرتبطة بالـ uid. مهلة 5 ثوانٍ كحد أقصى.
+    await new Promise(resolve => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      const unsub = _auth.onAuthStateChanged(() => { try { unsub(); } catch (e) {} finish(); });
+      setTimeout(finish, 5000);
+    });
+
     // مراقبة الاتصال
     _db.ref('.info/connected').on('value', snap => {
       const connected = snap.val() === true;
@@ -173,6 +182,14 @@ window.FB = (function () {
     const cred = window.firebase.auth.EmailAuthProvider.credential(email, pw);
     return u.reauthenticateWithCredential(cred);
   };
+  // حسابات Google ما عندها كلمة مرور → إعادة المصادقة عبر نافذة Google
+  const authReauthGoogle = () => {
+    const u = _auth?.currentUser;
+    if (!u) return Promise.reject(new Error('no_user'));
+    return u.reauthenticateWithPopup(new window.firebase.auth.GoogleAuthProvider());
+  };
+  const authHasPassword = () =>
+    !!_auth?.currentUser?.providerData?.some(p => p.providerId === 'password');
   const authDeleteUser = () => {
     const u = _auth?.currentUser;
     if (!u) return Promise.reject(new Error('no_user'));
@@ -263,6 +280,7 @@ window.FB = (function () {
     authRegister, authLogin, authSignOut,
     authCurrentUser, authOnChange, authResetPassword,
     authUpdatePassword, authReauth, authDeleteUser,
+    authReauthGoogle, authHasPassword,
 
     // Auth v5
     authUpdateEmail,

@@ -20,7 +20,10 @@
    At build/deploy time, replace __BUILD_HASH__ with a hash.
    Falls back to timestamp for automatic cache busting.
 ─────────────────────────────────────────────────────────── */
-const _BUILD = 'v8-' + Date.now();
+// ⚠️ ثابت عمداً: كان سابقاً 'v8-' + Date.now() فيتغير اسم الكاش كل ما يصحى الـ worker
+// فيفتح كاش فاضي جديد ولا يُنظَّف القديم. غيّر الرقم يدوياً عند تغيير هيكلة الكاش فقط
+// (ملفات JS/CSS/HTML تُجلب من الشبكة أولاً فلا تحتاج رفع الرقم مع كل نشر).
+const _BUILD = 'v9';
 
 const CACHE_STATIC   = `nabda-static-${_BUILD}`;
 const CACHE_DYNAMIC  = `nabda-dynamic-${_BUILD}`;
@@ -82,6 +85,9 @@ const STATIC_FILES = [
   'style.css',
   'manifest.json',
   'icon.png',
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png',
   'firebase.js',
   'auth.js',
   'chat.js',
@@ -173,8 +179,14 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // ── JS / CSS / images — cache-first ───────────
-  if (/\.(js|css|png|jpg|jpeg|webp|svg|woff2?|ico)(\?.*)?$/.test(url)) {
+  // ── JS / CSS — شبكة أولاً (مع مهلة) ثم الكاش: التحديثات تصل فوراً ──
+  if (/\.(js|css)(\?.*)?$/.test(url)) {
+    event.respondWith(_networkFirstTimeout(event.request));
+    return;
+  }
+
+  // ── Images / fonts — cache-first ───────────────
+  if (/\.(png|jpg|jpeg|webp|svg|woff2?|ico)(\?.*)?$/.test(url)) {
     event.respondWith(_cacheFirst(event.request));
     return;
   }
@@ -195,15 +207,42 @@ async function _trimCache(cacheName, maxItems) {
 
 /* ── Strategy: stale-while-revalidate ──────────────────── */
 async function _staleWhileRevalidate(request) {
-  const cache    = await caches.open(CACHE_STATIC);
-  const cached   = await cache.match(request);
+  const cache = await caches.open(CACHE_STATIC);
+  // مفتاح موحّد بدون query: لا تتراكم نسخ لكل رابط (?join=...) ويعمل الفتح بدون إنترنت
+  const u   = new URL(request.url);
+  const key = new Request(u.origin + u.pathname);
+  const cached = await cache.match(key);
   const fetchProm = fetch(request)
     .then(res => {
-      if (res && res.status === 200) cache.put(request, res.clone());
+      if (res && res.status === 200 && !res.redirected) cache.put(key, res.clone());
       return res;
     })
     .catch(() => null);
-  return cached || await fetchProm;
+  return cached
+    || (await fetchProm)
+    || (await cache.match(new Request(u.origin + '/')))
+    || new Response('Offline', { status: 503 });
+}
+
+/* ── Strategy: network-first with timeout (JS/CSS) ───────────
+   يجرب الشبكة أولاً. إذا تأخرت أكثر من المهلة وعندنا نسخة محفوظة نرجّع المحفوظة
+   (مهم لشبكة 3G)، وإذا ما في نسخة ننتظر الشبكة. وإذا فشلت نرجع المحفوظ. */
+async function _networkFirstTimeout(request, ms = 3500) {
+  const cache  = await caches.open(CACHE_STATIC);
+  const cached = await cache.match(request);
+  try {
+    const net = fetch(request).then(res => {
+      if (res && res.status === 200 && !res.redirected) cache.put(request, res.clone());
+      return res;
+    });
+    if (!cached) return await net;
+    return await Promise.race([
+      net,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+    ]);
+  } catch {
+    return cached || new Response('Offline', { status: 503 });
+  }
 }
 
 /* ── Strategy: cache-first ──────────────────────────────── */

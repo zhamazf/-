@@ -52,7 +52,16 @@
 window.Groups = (function () {
 
   /* ── ID generator ────────────────────────────────────────────── */
-  const genId = () => Math.random().toString(36).slice(2, 10);
+  // رموز الدعوة/المعرّفات: عشوائية آمنة (crypto) بدل Math.random القابل للتنبؤ
+  const genId = () => {
+    try {
+      const a = new Uint32Array(2);
+      crypto.getRandomValues(a);
+      return (a[0].toString(36).padStart(7, '0') + a[1].toString(36).padStart(7, '0')).slice(0, 10);
+    } catch {
+      return Math.random().toString(36).slice(2, 10);
+    }
+  };
   const MAX_MEMBERS    = 200;  // حد أقصى لأعضاء المجموعة
   const MAX_NAME_LEN   = 40;   // حد أقصى لاسم المجموعة
 
@@ -106,25 +115,26 @@ window.Groups = (function () {
     if (!uid) return { error: 'يجب تسجيل الدخول أولاً' };
 
     // ✅ بحث O(1) بدل تحميل كل المجموعات
+    // رمز الدعوة نفسه هو "الإثبات": قواعد Firebase تسمح بالانضمام الذاتي فقط
+    // إذا كانت القيمة المكتوبة تساوي رمز الدعوة الحالي والدعوة مفعّلة.
+    // (غير الأعضاء لا يستطيعون قراءة المجموعة، لذلك لا نقرأها قبل الانضمام.)
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(code)) return { error: 'رمز الدعوة غير صالح أو منتهي' };
+
     const gid = await FB.get(`inviteCodes/${code}`);
-    if (!gid) return { error: 'رمز الدعوة غير صالح أو منتهي' };
+    if (!gid || typeof gid !== 'string') return { error: 'رمز الدعوة غير صالح أو منتهي' };
 
-    const g = await _getGroup(gid);
-    if (!g)                return { error: 'المجموعة غير موجودة' };
-    if (!g.inviteActive)   return { error: 'رمز الدعوة منتهي' };
-    if (g.members?.[uid])  return { ok: true, gid: g.id, already: true };
+    try {
+      await FB.set(`groups/${gid}/members/${uid}`, code);
+    } catch (e) {
+      // مرفوض: إما الدعوة معطّلة/مجدّدة، أو أنت عضو بالفعل برمز قديم
+      const g = await _getGroup(gid); // تنجح القراءة للأعضاء فقط
+      if (g?.members?.[uid]) return { ok: true, gid, already: true };
+      return { error: 'رمز الدعوة غير صالح أو منتهي' };
+    }
 
-    // فحص الحد الأقصى للأعضاء
-    const memberCount = Object.keys(g.members || {}).length;
-    if (memberCount >= MAX_MEMBERS) return { error: `المجموعة وصلت للحد الأقصى (${MAX_MEMBERS} عضو)` };
+    // تنظيف طلب الانضمام المعلّق إن وُجد (اختياري — لا نفشل بسببه)
+    try { await FB.del(`groups/${gid}/pending/${uid}`); } catch {}
 
-    // ✅ multi-path atomic update
-    const updates = {};
-    updates[`groups/${gid}/members/${uid}`]  = true;
-    if (g.pending?.[uid])
-      updates[`groups/${gid}/pending/${uid}`] = null; // حذف من pending
-
-    await FB.upd('/', updates);
     await FB.set(`users/${uid}/groups/${gid}`, true);
     return { ok: true, gid };
   }
@@ -137,12 +147,17 @@ window.Groups = (function () {
     const uid = _myUid();
     if (!uid) return { error: 'يجب تسجيل الدخول أولاً' };
 
+    // غير الأعضاء لا يقرؤون المجموعة (قواعد Firebase) → القراءة تنجح للأعضاء فقط
     const g = await _getGroup(gid);
-    if (!g)               return { error: 'المعرّف غير موجود' };
-    if (g.members?.[uid]) return { error: 'أنت بالفعل عضو في هذه المجموعة' };
-    if (g.pending?.[uid]) return { error: 'طلبك قيد الانتظار' };
+    if (g?.members?.[uid]) return { error: 'أنت بالفعل عضو في هذه المجموعة' };
+    if (g?.pending?.[uid]) return { error: 'طلبك قيد الانتظار' };
 
-    await FB.upd(`groups/${gid}/pending`, { [uid]: true });
+    // القواعد ترفض الكتابة إذا المجموعة غير موجودة
+    try {
+      await FB.set(`groups/${gid}/pending/${uid}`, true);
+    } catch (e) {
+      return { error: 'المعرّف غير موجود' };
+    }
     return { ok: true };
   }
 
@@ -284,6 +299,13 @@ window.Groups = (function () {
     // ✅ الأدمن فقط يحذف المجموعة
     if (!isAdmin(g, uid)) return { error: 'الأدمن فقط يمكنه حذف المجموعة' };
 
+    // احذف group index من جميع الأعضاء أولاً: قاعدة الكتابة على users/{uid}/groups/{gid}
+    // تتحقق من أن الكاتب أدمن المجموعة، وهذا يفشل بعد حذف المجموعة نفسها.
+    const memberUids = Object.keys(g.members || {});
+    await Promise.allSettled(
+      memberUids.map(mUid => FB.del(`users/${mUid}/groups/${gid}`))
+    );
+
     // ✅ atomic multi-path: حذف المجموعة + رسائلها + typing + inviteCode index
     const updates = {};
     updates[`groups/${gid}`]          = null;
@@ -293,12 +315,6 @@ window.Groups = (function () {
       updates[`inviteCodes/${g.inviteCode}`] = null;
 
     await FB.upd('/', updates);
-
-    // احذف group index من جميع الأعضاء
-    const memberUids = Object.keys(g.members || {});
-    await Promise.allSettled(
-      memberUids.map(mUid => FB.del(`users/${mUid}/groups/${gid}`))
-    );
     return { ok: true };
   }
 

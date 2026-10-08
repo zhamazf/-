@@ -37,7 +37,7 @@ window.UI = (function () {
     catch { return fb; }
   }
   function _lsSet(k, v) {
-    try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
+    try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; }
   }
 
   let _dark = _lsGet('nabda_theme', window.matchMedia?.('(prefers-color-scheme:dark)').matches);
@@ -564,8 +564,8 @@ window.UI = (function () {
   ═══════════════════════════════════════════════ */
   function getChatBgs()          { return _lsGet('chatBgs', {}); }
   function getBubbleColors()     { return _lsGet('bubbleColors', {}); }
-  function saveChatBg(id, bg)    { _lsSet('chatBgs',      { ...getChatBgs(),      [id]: bg }); }
-  function saveBubbleColor(id,c) { _lsSet('bubbleColors', { ...getBubbleColors(), [id]: c  }); }
+  function saveChatBg(id, bg)    { return _lsSet('chatBgs',      { ...getChatBgs(),      [id]: bg }); }
+  function saveBubbleColor(id,c) { return _lsSet('bubbleColors', { ...getBubbleColors(), [id]: c  }); }
 
   /* ── Public API ─────────────────────────────── */
   return {

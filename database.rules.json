@@ -1,0 +1,172 @@
+{
+  "rules": {
+
+    "users": {
+      "$uid": {
+        ".read": "auth !== null",
+        ".write": "$uid === auth.uid",
+        "friends": {
+          "$friendUid": {
+            ".write": "auth !== null && ($uid === auth.uid || ($friendUid === auth.uid && (!newData.exists() || root.child('friendRequests').child(auth.uid).child($uid).exists())))"
+          }
+        },
+        "groups": {
+          "$gid": {
+            ".write": "auth !== null && ($uid === auth.uid || root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
+          }
+        }
+      }
+    },
+
+    "usernames": {
+      "$username": {
+        ".read": "auth !== null",
+        ".write": "auth !== null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))",
+        ".validate": "newData.isString()"
+      }
+    },
+
+    "dmMsgs": {
+      "$dmKey": {
+        ".read": "auth !== null && $dmKey.contains(auth.uid)",
+        ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists()"
+      }
+    },
+
+    "groups": {
+      "$gid": {
+        ".read": "auth !== null && (data.child('members').child(auth.uid).exists() || data.child('admin').val() === auth.uid)",
+        ".write": "auth !== null && ((!data.exists() && newData.child('admin').val() === auth.uid) || data.child('admin').val() === auth.uid)",
+        "members": {
+          "$uid": {
+            ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || (root.child('groups').child($gid).child('mods').child(auth.uid).exists() && $uid !== root.child('groups').child($gid).child('admin').val()) || ($uid === auth.uid && !newData.exists()) || ($uid === auth.uid && root.child('groups').child($gid).child('inviteActive').val() === true && newData.val() === root.child('groups').child($gid).child('inviteCode').val()))"
+          }
+        },
+        "pending": {
+          "$uid": {
+            ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists() || ($uid === auth.uid && (!newData.exists() || (newData.val() === true && root.child('groups').child($gid).exists()))))"
+          }
+        },
+        "mods": {
+          "$uid": {
+            ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || ((root.child('groups').child($gid).child('mods').child(auth.uid).exists() || $uid === auth.uid) && !newData.exists()))"
+          }
+        },
+        "name": {
+          ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
+        },
+        "photo": {
+          ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
+        },
+        "description": {
+          ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
+        }
+      }
+    },
+
+    "groupMsgs": {
+      "$gid": {
+        ".read": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
+        ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()"
+      }
+    },
+
+    "groupPolls": {
+      "$gid": {
+        ".read": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
+        ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()"
+      }
+    },
+
+    "pinnedMsgs": {
+      "$pinKey": {
+        ".read": "auth !== null && (($pinKey.beginsWith('dmMsgs_') && $pinKey.contains(auth.uid)) || ($pinKey.beginsWith('groupMsgs_') && root.child('groups').child($pinKey.replace('groupMsgs_', '')).child('members').child(auth.uid).exists()))",
+        ".write": "auth !== null && (($pinKey.beginsWith('dmMsgs_') && $pinKey.contains(auth.uid)) || ($pinKey.beginsWith('groupMsgs_') && root.child('groups').child($pinKey.replace('groupMsgs_', '')).child('members').child(auth.uid).exists()))"
+      }
+    },
+
+    "inviteCodes": {
+      "$code": {
+        ".read": "auth !== null",
+        ".write": "auth !== null && ((newData.exists() && newData.isString() && root.child('groups').child(newData.val()).child('admin').val() === auth.uid) || (!newData.exists() && data.exists() && root.child('groups').child(data.val()).child('admin').val() === auth.uid))"
+      }
+    },
+
+    "presence": {
+      ".read": "auth !== null",
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    },
+
+    "friendRequests": {
+      "$targetUid": {
+        ".read": "$targetUid === auth.uid",
+        ".write": "$targetUid === auth.uid && !newData.exists()",
+        "$senderUid": {
+          ".read": "auth !== null && ($senderUid === auth.uid || $targetUid === auth.uid)",
+          ".write": "auth !== null && (($targetUid === auth.uid && !newData.exists()) || ($senderUid === auth.uid && $targetUid !== auth.uid && (!newData.exists() || (newData.child('from').val() === auth.uid && !root.child('blockedUsers').child($targetUid).child(auth.uid).exists()))))"
+        }
+      }
+    },
+
+    "blockedUsers": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        "$other": {
+          ".read": "auth !== null && ($uid === auth.uid || $other === auth.uid)",
+          ".write": "$uid === auth.uid"
+        }
+      }
+    },
+
+    "notifications": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        "$nid": {
+          ".write": "auth !== null && ($uid === auth.uid || (!data.exists() && (newData.child('fromUid').val() === auth.uid || newData.child('byUid').val() === auth.uid)))"
+        }
+      }
+    },
+
+    "reports": {
+      "$rid": {
+        ".write": "auth !== null && !data.exists() && newData.child('reporterUid').val() === auth.uid"
+      }
+    },
+
+    "readReceipts": {
+      "$chatKey": {
+        ".read": "auth !== null",
+        "$uid": {
+          ".write": "$uid === auth.uid"
+        }
+      }
+    },
+
+    "typing": {
+      ".read": "auth !== null",
+      ".write": "auth !== null"
+    },
+
+    "stories": {
+      ".read": "auth !== null",
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    },
+
+    "storyViews": {
+      "$owner": {
+        ".read": "$owner === auth.uid",
+        "$sid": {
+          ".write": "$owner === auth.uid",
+          "$viewer": {
+            ".write": "$viewer === auth.uid"
+          }
+        }
+      }
+    }
+
+  }
+}
