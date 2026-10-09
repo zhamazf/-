@@ -19,6 +19,7 @@
     },
 
     "usernames": {
+      ".read": "auth !== null && query.orderByKey === true && query.limitToFirst <= 10 && query.startAt.length >= 1",
       "$username": {
         ".read": "auth !== null",
         ".write": "auth !== null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))",
@@ -39,7 +40,7 @@
         ".write": "auth !== null && ((!data.exists() && newData.child('admin').val() === auth.uid) || data.child('admin').val() === auth.uid)",
         "members": {
           "$uid": {
-            ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || (root.child('groups').child($gid).child('mods').child(auth.uid).exists() && $uid !== root.child('groups').child($gid).child('admin').val()) || ($uid === auth.uid && !newData.exists()) || ($uid === auth.uid && root.child('groups').child($gid).child('inviteActive').val() === true && newData.val() === root.child('groups').child($gid).child('inviteCode').val()))"
+            ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || (root.child('groups').child($gid).child('mods').child(auth.uid).exists() && $uid !== root.child('groups').child($gid).child('admin').val()) || ($uid === auth.uid && !newData.exists()) || ($uid === auth.uid && root.child('groups').child($gid).child('inviteActive').val() === true && newData.val() === root.child('groups').child($gid).child('inviteCode').val()) || ($uid === auth.uid && newData.val() === true && root.child('groups').child($gid).child('privacy').val() === 'public'))"
           }
         },
         "pending": {
@@ -51,6 +52,9 @@
           "$uid": {
             ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || ((root.child('groups').child($gid).child('mods').child(auth.uid).exists() || $uid === auth.uid) && !newData.exists()))"
           }
+        },
+        "privacy": {
+          ".validate": "newData.val() === 'public' || newData.val() === 'private'"
         },
         "name": {
           ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"

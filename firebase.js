@@ -102,6 +102,18 @@ window.FB = (function () {
     }
   };
 
+  // مثل get لكن يرمي الخطأ (permission/network) بدل ابتلاعه
+  const getStrict = async path => {
+    const snap = await r(path).once('value');
+    return snap.exists() ? snap.val() : null;
+  };
+
+  // بحث بالبادئة على المفاتيح: يرجع { key: value } لأول limit مفتاح يبدأ بـ prefix
+  async function queryKeyPrefix(path, prefix, limit = 8) {
+    const snap = await r(path).orderByKey().startAt(prefix).endAt(prefix + '\uf8ff').limitToFirst(limit).once('value');
+    return snap.exists() ? snap.val() : {};
+  }
+
   function on(path, cb, onError) {
     const ref = r(path);
     ref.on('value',
@@ -268,7 +280,7 @@ window.FB = (function () {
     onConnectionChange, isConnected,
 
     // DB
-    set, upd, push, del, get, on, onLimit, onDisconn,
+    set, upd, push, del, get, getStrict, queryKeyPrefix, on, onLimit, onDisconn,
 
     // DB v5
     getPage,

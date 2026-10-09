@@ -262,6 +262,35 @@ window.Friends = (function () {
       }));
   }
 
+  /**
+   * اقتراحات أسماء مستخدمين أثناء الكتابة (بادئة، بدون حساسية لحالة الأحرف الأولى).
+   * يرجع [{ username, uid }] بدون نفسك.
+   */
+  async function suggestUsernames(prefix, meUid, limit = 8) {
+    prefix = (prefix || '').trim();
+    if (!prefix || prefix.length > 30) return [];
+    const variants = [...new Set([
+      prefix,
+      prefix.toLowerCase(),
+      prefix.charAt(0).toUpperCase() + prefix.slice(1).toLowerCase(),
+      prefix.toUpperCase(),
+    ])];
+    const found = new Map();
+    const results = await Promise.all(variants.map(v =>
+      FB.queryKeyPrefix('usernames', v, limit).catch(() => ({}))));
+    results.forEach(obj => Object.entries(obj || {}).forEach(([name, uid]) => {
+      if (typeof uid === 'string' && uid !== meUid) found.set(name, uid);
+    }));
+    const q = prefix.toLowerCase();
+    return [...found.entries()]
+      .map(([username, uid]) => ({ username, uid }))
+      .sort((a, b) => {
+        const ae = a.username.toLowerCase() === q ? 0 : 1, be = b.username.toLowerCase() === q ? 0 : 1;
+        return ae - be || a.username.length - b.username.length || a.username.localeCompare(b.username);
+      })
+      .slice(0, limit);
+  }
+
   /* ── Public API ──────────────────────────────────────────── */
   return {
     // Core
@@ -284,6 +313,7 @@ window.Friends = (function () {
     // Discovery
     getSuggestions,
     searchUsers,
+    suggestUsernames,
   };
 
 })();

@@ -195,6 +195,16 @@ window.Auth = (function () {
     _loginAttempts.delete(email);
   }
 
+  function _withTimeout(promise, ms) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject({ code: 'auth/timeout' }), ms);
+      Promise.resolve(promise).then(
+        v => { clearTimeout(t); resolve(v); },
+        e => { clearTimeout(t); reject(e); }
+      );
+    });
+  }
+
   /* ── Login ───────────────────────────────────────────────────── */
   async function login(email, password) {
     email    = email.trim().toLowerCase();
@@ -208,11 +218,11 @@ window.Auth = (function () {
     if (throttle.locked) return { error: throttle.error };
 
     try {
-      const cred = await FB.authLogin(email, password);
+      const cred = await _withTimeout(FB.authLogin(email, password), 30000);
       const uid  = cred.user.uid;
 
-      // جلب البروفايل من users/{uid}
-      const profile = await FB.get(`users/${uid}`);
+      // جلب البروفايل من users/{uid} (بمهلة حتى لا يعلق التحميل للأبد)
+      const profile = await _withTimeout(FB.getStrict(`users/${uid}`), 20000);
       if (!profile) {
         // لا نترك المستخدم مسجّلاً بدون بروفايل (حالة نصف-دخول)
         try { await FB.authSignOut(); } catch {}
@@ -224,8 +234,13 @@ window.Auth = (function () {
       return { ok: true, username: profile.username, uid };
 
     } catch (e) {
+      // انقطاع/بطء شبكة ليس خطأ كلمة مرور → لا يُحتسب كمحاولة فاشلة
+      if (e && e.code === 'auth/timeout') {
+        try { await FB.authSignOut(); } catch {}
+        return { error: friendlyError('auth/timeout') };
+      }
       _recordFailedLogin(email);
-      return { error: friendlyError(e.code) };
+      return { error: friendlyError(e && e.code) };
     }
   }
 

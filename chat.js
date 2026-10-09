@@ -310,7 +310,7 @@ window.Chat = (function () {
   const _groupReadCache = new Map(); // groupId → timestamp
 
   function updateGroupReadCache(groupId, ts) {
-    _groupReadCache.set(groupId, ts || 0);
+    _groupReadCache.set(groupId, Math.max(_groupReadCache.get(groupId) || 0, ts || 0));
   }
 
   async function markGroupRead(groupId, myUid) {
@@ -413,7 +413,7 @@ window.Chat = (function () {
   const _readCache = new Map();
 
   function updateReadCache(chatKey, ts) {
-    _readCache.set(chatKey, ts || 0);
+    _readCache.set(chatKey, Math.max(_readCache.get(chatKey) || 0, ts || 0));
   }
 
   function computeUnread(me, usersByName, dmChats) {

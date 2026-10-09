@@ -77,31 +77,67 @@ window.Groups = (function () {
   }
 
   /* ── Create ──────────────────────────────────────────────────── */
-  async function create(me, name, description = '') {
+  const PRIVACY = ['public', 'private'];
+  const MAX_PHOTO_LEN = 400 * 1024; // حرف dataURL (~300KB صورة)
+
+  // opts: نص (وصف — توافق قديم) أو { description, photo, privacy }
+  async function create(me, name, opts = {}) {
+    if (typeof opts === 'string') opts = { description: opts };
+    opts = opts || {};
     if (!name || !name.trim()) return { error: 'أدخل اسم المجموعة' };
     if (name.trim().length > MAX_NAME_LEN) return { error: `اسم المجموعة طويل جداً (${MAX_NAME_LEN} حرفاً كحد أقصى)` };
     const uid = _myUid();
     if (!uid) return { error: 'يجب تسجيل الدخول أولاً' };
 
+    const privacy = PRIVACY.includes(opts.privacy) ? opts.privacy : 'private';
+    let photo = null;
+    if (opts.photo) {
+      if (typeof opts.photo !== 'string' || !/^data:image\//.test(opts.photo)) return { error: 'صورة غير صالحة' };
+      if (opts.photo.length > MAX_PHOTO_LEN) return { error: 'الصورة كبيرة جداً' };
+      photo = opts.photo;
+    }
+
     const gid = genId();
     const inv = genId();
 
-    await FB.set(`groups/${gid}`, {
-      id: gid, name: name.trim(), admin: uid,
-      adminUsername: me,
-      description:  (description || '').trim().slice(0, 200), // v2: وصف المجموعة
-      members:  { [uid]: true },
-      mods:     {},
-      pending:  {},
-      inviteCode:   inv,
-      inviteActive: true,
-      photo:    null,
-      createdAt: Date.now()
-    });
+    try {
+      await FB.set(`groups/${gid}`, {
+        id: gid, name: name.trim(), admin: uid,
+        adminUsername: me,
+        description:  (opts.description || '').trim().slice(0, 200),
+        members:  { [uid]: true },
+        mods:     {},
+        pending:  {},
+        inviteCode:   inv,
+        inviteActive: true,
+        privacy,
+        photo,
+        createdAt: Date.now()
+      });
+      await FB.set(`inviteCodes/${inv}`, gid);
+      await FB.set(`users/${uid}/groups/${gid}`, true);
+    } catch (e) {
+      return { error: 'تعذّر إنشاء المجموعة، حاول مجدداً' };
+    }
 
-    await FB.set(`inviteCodes/${inv}`, gid);
-    await FB.set(`users/${uid}/groups/${gid}`, true);
+    return { ok: true, gid };
+  }
 
+  /* ── Join public group directly by ID ───────────────────────── */
+  // المجموعات العامة: القواعد تسمح بالانضمام الذاتي (members/{uid} = true) إذا privacy === 'public'.
+  // إن لم تكن عامة تفشل الكتابة فنرجع { needsRequest: true } ليُرسل طلب انضمام.
+  async function joinPublic(me, gid) {
+    gid = (gid || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(gid)) return { error: 'معرّف غير صالح' };
+    const uid = _myUid();
+    if (!uid) return { error: 'يجب تسجيل الدخول أولاً' };
+    try {
+      await FB.set(`groups/${gid}/members/${uid}`, true);
+    } catch (e) {
+      return { needsRequest: true };
+    }
+    try { await FB.del(`groups/${gid}/pending/${uid}`); } catch (e) {}
+    try { await FB.set(`users/${uid}/groups/${gid}`, true); } catch (e) {}
     return { ok: true, gid };
   }
 
@@ -269,6 +305,17 @@ window.Groups = (function () {
   }
 
   /* ── Edit group name / photo ─────────────────────────────────── */
+  async function setPrivacy(gid, privacy) {
+    const uid = _myUid();
+    if (!uid) return { error: 'غير مصرح' };
+    if (!PRIVACY.includes(privacy)) return { error: 'قيمة غير صالحة' };
+    const g = await _getGroup(gid);
+    if (!g) return { error: 'المجموعة غير موجودة' };
+    if (!isAdmin(g, uid)) return { error: 'الأدمن فقط يغيّر نوع المجموعة' };
+    try { await FB.set(`groups/${gid}/privacy`, privacy); } catch (e) { return { error: 'تعذّر الحفظ' }; }
+    return { ok: true };
+  }
+
   async function saveEdit(gid, newName, newPhoto) {
     const uid = _myUid();
     if (!uid) return { error: 'غير مصرح' };
@@ -598,6 +645,7 @@ window.Groups = (function () {
     create, joinByInvite, requestJoin,
     approve, reject, kick, toggleInvite,
     addMember, saveEdit, deleteGroup, toggleMod,
+    joinPublic, setPrivacy,
     leaveGroup, transferAdmin, resetInviteCode,
 
     // v2: Notify

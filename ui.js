@@ -521,6 +521,31 @@ window.UI = (function () {
     });
   }
 
+  // يصغّر الصورة إلى مربع (قص من المنتصف) ويرجع dataURL (JPEG) خفيف للتخزين
+  function imageToThumb(file, size = 320, quality = 0.82) {
+    return new Promise((res, rej) => {
+      if (!file) return rej(new Error('no_file'));
+      if (!file.type || !file.type.startsWith('image/')) return rej(new Error('نوع الملف غير مدعوم'));
+      if (file.size > 15 * 1024 * 1024) return rej(new Error('الصورة كبيرة جداً'));
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const side = Math.min(img.naturalWidth, img.naturalHeight);
+          const sx = (img.naturalWidth - side) / 2, sy = (img.naturalHeight - side) / 2;
+          const c = document.createElement('canvas'); c.width = c.height = size;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+          URL.revokeObjectURL(url);
+          res(c.toDataURL('image/jpeg', quality));
+        } catch (e) { URL.revokeObjectURL(url); rej(new Error('تعذّر معالجة الصورة')); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('تعذّر قراءة الصورة')); };
+      img.src = url;
+    });
+  }
+
   /**
    * ✅ Safe DOM update — replaces children without innerHTML
    * Avoids full re-render when only content changes
@@ -606,6 +631,7 @@ window.UI = (function () {
     el,
     spinner,
     fileToBase64,
+    imageToThumb,
     setChildren,
     confirmDialog,
     setConnectionStatus,
