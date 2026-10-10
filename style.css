@@ -518,3 +518,44 @@ input:focus:not(:focus-visible) {
   background: #6366f133;
   color: inherit;
 }
+
+/* ═══════════════════════════════════════════
+   v3 — لمسة عصرية (طبقة تحسينات آمنة، لا تغيّر المنطق)
+   ═══════════════════════════════════════════ */
+:root{color-scheme:light dark}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{text-rendering:optimizeLegibility;overscroll-behavior:none}
+::selection{background:#6366f155}
+
+/* مناطق آمنة (النتوءات/شريط الإيماءات) */
+#app{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+#toast-host{bottom:calc(80px + env(safe-area-inset-bottom))}
+
+/* تغذية راجعة عند اللمس */
+button{transition:transform .12s ease,opacity .15s ease,background-color .2s ease,box-shadow .2s ease,border-color .2s ease}
+button:active:not(:disabled){transform:scale(.96)}
+button:disabled{opacity:.6;cursor:default}
+.tab:active{transform:none}
+
+/* تركيز واضح للوحة المفاتيح/القارئات */
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #818cf8;outline-offset:2px}
+input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+
+/* فقاعات أنعم */
+.bubble{letter-spacing:.1px}
+.bubble.mine{box-shadow:0 3px 10px rgba(99,102,241,.28)}
+.bubble img,.bubble video{border-radius:14px;max-width:100%;display:block}
+.msg-row{animation:fadeUp .22s cubic-bezier(.2,.8,.2,1)}
+
+/* ورقات وحوارات */
+#toast-host .toast-item{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#chat-sheet>div:last-child,#e2e-sheet>div:last-child{box-shadow:0 -12px 40px rgba(0,0,0,.28)}
+#rx-picker{box-shadow:0 8px 28px rgba(0,0,0,.28)}
+
+/* شريط التمرير أنعم */
+*{scrollbar-width:thin;scrollbar-color:#6366f166 transparent}
+
+/* احترام تفضيل تقليل الحركة */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
