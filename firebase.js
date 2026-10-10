@@ -28,6 +28,7 @@ window.FB = (function () {
   let _auth    = null;
   let _storage = null;
   let _isOnline  = true;
+  let _authResolved = false;   // true بعد أول رد نهائي من Firebase Auth (مستخدم أو null)
   let _onlineCbs = [];
 
   /* ── تحميل script عادي (ليس module) ─────────────────────── */
@@ -58,13 +59,16 @@ window.FB = (function () {
     _auth    = window.firebase.auth();
     _storage = window.firebase.storage();
 
-    // انتظر استعادة الجلسة المحفوظة قبل إكمال الإقلاع، وإلا تكون authCurrentUser()
-    // فارغة لحظة الفتح وتتعطل البيانات المرتبطة بالـ uid. مهلة 5 ثوانٍ كحد أقصى.
+    // ثبّت الجلسة محلياً (تبقى بعد إغلاق التطبيق)
+    try { await _auth.setPersistence(window.firebase.auth.Auth.Persistence.LOCAL); } catch (e) {}
+
+    // انتظر استعادة الجلسة المحفوظة قبل إكمال الإقلاع. الاستعادة تتضمن طلب شبكة للتحقق
+    // من المستخدم، فقد تتأخر على الشبكات البطيئة: لا نعتبرها "خروجاً" إذا تأخرت.
     await new Promise(resolve => {
       let done = false;
       const finish = () => { if (!done) { done = true; resolve(); } };
-      const unsub = _auth.onAuthStateChanged(() => { try { unsub(); } catch (e) {} finish(); });
-      setTimeout(finish, 5000);
+      const unsub = _auth.onAuthStateChanged(() => { _authResolved = true; try { unsub(); } catch (e) {} finish(); });
+      setTimeout(finish, 6000);
     });
 
     // مراقبة الاتصال
@@ -182,6 +186,7 @@ window.FB = (function () {
   const authSignOut       = ()     => _auth.signOut();
   const authCurrentUser   = ()     => _auth?.currentUser || null;
   const authOnChange      = cb     => _auth.onAuthStateChanged(cb);
+  const authResolved      = ()     => _authResolved;
   const authResetPassword = email  => _auth.sendPasswordResetEmail(email);
   const authUpdatePassword = pw    => {
     const u = _auth?.currentUser;
@@ -276,7 +281,7 @@ window.FB = (function () {
   }
 
   return {
-    init,
+    init, authResolved,
     onConnectionChange, isConnected,
 
     // DB

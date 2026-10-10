@@ -476,6 +476,19 @@
     if(!th2){th2=document.createElement('div');th2.id='toast-host';}
     APP.appendChild(th2);
     APP.style.cssText=`height:100vh;display:flex;flex-direction:column;background:${th().bg};color:${th().text};direction:rtl;overflow:hidden`;
+    try { _renderSwitch(); }
+    catch (err) {
+      console.error('[render]', S.screen, err);
+      APP.innerHTML='';
+      const box=UI.el('div',`flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;color:${th().text2}`);
+      const t=UI.el('div','font-size:15px;font-weight:700');t.textContent='حدث خطأ أثناء عرض الصفحة';
+      const b=UI.el('button','padding:10px 20px;border:none;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-family:inherit;font-weight:700;cursor:pointer');b.textContent='العودة للرئيسية';
+      b.addEventListener('click',()=>go(S.me?'home':'auth'));
+      box.appendChild(t);box.appendChild(b);APP.appendChild(box);
+    }
+  }
+
+  function _renderSwitch(){
     switch(S.screen){
       case 'auth':        return renderAuth();
       case 'home':        return renderHome();
@@ -1060,6 +1073,22 @@
     bub.addEventListener('touchend',()=>clearTimeout(_pressTimer));
     bub.addEventListener('touchmove',()=>clearTimeout(_pressTimer));
 
+    // ── نقر مزدوج = تفاعل ❤️ سريع ──
+    if(!isOpt && m.id){
+      bub.style.touchAction='manipulation';
+      const interactive=t=>!!(t&&t.closest&&t.closest('img,video,audio,button,a,input,textarea,[data-no-dbl]'));
+      let _lt=0,_lx=0,_ly=0,_mv=false,_sx0=0,_sy0=0,_qr=0;
+      bub.addEventListener('touchstart',e=>{const t=e.touches[0];_sx0=t.clientX;_sy0=t.clientY;_mv=false;},{passive:true});
+      bub.addEventListener('touchmove',e=>{const t=e.touches[0];if(Math.abs(t.clientX-_sx0)>10||Math.abs(t.clientY-_sy0)>10)_mv=true;},{passive:true});
+      bub.addEventListener('touchend',e=>{
+        if(_mv||interactive(e.target))return;
+        const t=e.changedTouches[0],now=Date.now();
+        if(now-_lt<320&&Math.abs(t.clientX-_lx)<30&&Math.abs(t.clientY-_ly)<30){_lt=0;_qr=now;_quickReact(m,bub);}
+        else{_lt=now;_lx=t.clientX;_ly=t.clientY;}
+      });
+      bub.addEventListener('dblclick',e=>{if(interactive(e.target)||Date.now()-_qr<900)return;e.preventDefault();_quickReact(m,bub);});
+    }
+
     // ── إيماءات الرسالة: سحب لليمين = رد، سحب لليسار = تحويل ──
     if(!isOpt && m.id){
       row.style.position='relative'; row.style.touchAction='pan-y';
@@ -1108,54 +1137,78 @@
     return row;
   }
 
+  function _closeCtx(){
+    ['ctx-menu','rx-picker','ctx-backdrop'].forEach(id=>{const e=document.getElementById(id);if(e)e.remove();});
+  }
+
   function _openContextMenu(m,mine,anchorEl){
-    const ex=document.getElementById('ctx-menu');if(ex)ex.remove();
+    _closeCtx();
     const cPath=Chat.msgPath(S.screen,S.screen==='dm'?Chat.dmKey(S.meUid,_uidByName(S.activeId)||S.activeId):S.activeId);
-    const menu=UI.el('div',`position:fixed;z-index:980;background:${th().card};border:1px solid ${th().border};border-radius:16px;padding:6px;box-shadow:0 8px 32px rgba(0,0,0,.25);min-width:160px`);
+    const W=window.innerWidth,H=window.innerHeight;
+    const backdrop=UI.el('div','position:fixed;inset:0;z-index:979;background:rgba(0,0,0,.32);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:fadeUp .12s ease');
+    backdrop.id='ctx-backdrop';backdrop.addEventListener('click',_closeCtx);
+    backdrop.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+    document.body.appendChild(backdrop);
+
+    /* شريط التفاعل: يطفو فوق الرسالة */
+    const bar=UI.el('div',`position:fixed;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:50px;padding:6px 8px;display:flex;gap:2px;box-shadow:0 8px 30px rgba(0,0,0,.28);max-width:${W-16}px`);
+    bar.id='rx-picker';
+    Chat.ALLOWED_REACTIONS.forEach((emoji,idx)=>{
+      const has=!!(m.reactions&&m.reactions[emoji]&&m.reactions[emoji][S.meUid]);
+      const b=UI.el('button',`font-size:26px;line-height:1;background:${has?'rgba(99,102,241,.18)':'none'};border:none;cursor:pointer;border-radius:50%;width:42px;height:42px;display:flex;align-items:center;justify-content:center;transition:transform .15s`);
+      b.textContent=emoji;b.setAttribute('aria-label','تفاعل '+emoji);
+      b.addEventListener('click',()=>{_closeCtx();has?Chat.removeReaction(cPath,m.id,S.meUid,emoji):Chat.addReaction(cPath,m.id,S.meUid,emoji);});
+      try{b.animate([{transform:'scale(.3)',opacity:0},{transform:'scale(1.15)',opacity:1},{transform:'scale(1)'}],{duration:240,delay:idx*28,fill:'backwards',easing:'ease-out'});}catch(_){}
+      bar.appendChild(b);
+    });
+
+    /* قائمة الإجراءات */
+    const menu=UI.el('div',`position:fixed;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:18px;padding:6px;box-shadow:0 10px 36px rgba(0,0,0,.3);min-width:190px`);
     menu.id='ctx-menu';
     [{ico:'↩️',lbl:'رد',fn:()=>{_replyTo={id:m.id,text:m.text,sender:m.sender,type:m.type};_showReplyBar();}},
      {ico:'↪️',lbl:'تحويل',fn:()=>_openForwardPicker(m),show:!m.deleted&&m.type!=='poll'},
      {ico:'📋',lbl:'نسخ',fn:()=>{try{navigator.clipboard.writeText(m.text||'');}catch{}UI.toast('تم النسخ','success');},show:m.type==='text'},
-     {ico:'😀',lbl:'تفاعل',fn:()=>{menu.remove();_showReactionPicker(m,cPath);}},
      {ico:'📌',lbl:'تثبيت',fn:async()=>{const res=await Chat.pinMsg(cPath,m,S.meUid);if(res.error)UI.toast(res.error,'error');else UI.toast('تم التثبيت 📌','success');}},
      {ico:'✏️',lbl:'تعديل',fn:()=>{menu.remove();_startEdit(m,cPath);},show:mine&&m.type==='text'&&!m.deleted},
      {ico:'🗑',lbl:'حذف',fn:async()=>{menu.remove();if(!await UI.confirmDialog('حذف هذه الرسالة؟',{confirmText:'حذف',danger:true}))return;const res=await Chat.deleteMsg(cPath,m.id,S.meUid);if(res.error)UI.toast(res.error,'error');},show:mine&&!m.deleted,danger:true},
     ].filter(i=>i.show!==false).forEach(({ico,lbl,fn,danger})=>{
-      const btn=UI.el('button',`width:100%;display:flex;align-items:center;gap:10px;padding:10px 14px;border:none;background:none;cursor:pointer;border-radius:10px;font-family:inherit;font-size:14px;color:${danger?'#ef4444':th().text};text-align:right`);
+      const btn=UI.el('button',`width:100%;display:flex;align-items:center;gap:12px;padding:11px 14px;border:none;background:none;cursor:pointer;border-radius:12px;font-family:inherit;font-size:14px;color:${danger?'#ef4444':th().text};text-align:right`);
       const ic=document.createElement('span');ic.textContent=ico;ic.style.fontSize='18px';
       const lb=document.createElement('span');lb.textContent=lbl;
       btn.appendChild(ic);btn.appendChild(lb);
-      btn.addEventListener('click',()=>{menu.remove();fn();});
-      btn.addEventListener('mouseenter',()=>btn.style.background=th().card2);
-      btn.addEventListener('mouseleave',()=>btn.style.background='none');
+      btn.addEventListener('click',()=>{_closeCtx();fn();});
       menu.appendChild(btn);
     });
+    document.body.appendChild(bar);document.body.appendChild(menu);
+    try{menu.animate([{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'scale(1)'}],{duration:150,easing:'ease-out'});}catch(_){}
+
+    /* التموضع: الشريط فوق الرسالة، والقائمة تحتها (داخل حدود الشاشة) */
     const rect=anchorEl.getBoundingClientRect();
-    const top=Math.min(rect.top,window.innerHeight-300);
-    const left=mine?Math.max(8,rect.left-170):Math.min(window.innerWidth-180,rect.right+4);
-    menu.style.top=top+'px';menu.style.left=left+'px';
-    document.body.appendChild(menu);
-    const _cl=e=>{if(!menu.contains(e.target)){menu.remove();document.removeEventListener('click',_cl);}};
-    setTimeout(()=>document.addEventListener('click',_cl),10);
+    const vTop=Math.max(rect.top,84),vBot=Math.min(rect.bottom,H-84);
+    const bw=bar.offsetWidth,bh=bar.offsetHeight,mw=menu.offsetWidth,mh=menu.offsetHeight;
+    const cx=rect.left+rect.width/2;
+    bar.style.left=Math.max(8,Math.min(W-bw-8,cx-bw/2))+'px';
+    bar.style.top=Math.max(64,vTop-bh-8)+'px';
+    let mTop=vBot+8; if(mTop+mh>H-8)mTop=Math.max(64,H-mh-8);
+    if(mTop<parseFloat(bar.style.top)+bh+4)mTop=Math.min(H-mh-8,parseFloat(bar.style.top)+bh+8);
+    menu.style.top=mTop+'px';
+    menu.style.left=Math.max(8,Math.min(W-mw-8,mine?rect.right-mw:rect.left))+'px';
   }
 
-  function _showReactionPicker(m,cPath){
-    const ex=document.getElementById('rx-picker');if(ex)ex.remove();
-    const pick=UI.el('div',`position:fixed;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:50px;padding:8px 12px;display:flex;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,.2)`);
-    pick.id='rx-picker';
-    Chat.ALLOWED_REACTIONS.forEach(emoji=>{
-      const b=UI.el('button','font-size:22px;background:none;border:none;cursor:pointer;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;transition:transform .15s');
-      b.textContent=emoji;
-      b.addEventListener('mouseenter',()=>b.style.transform='scale(1.3)');
-      b.addEventListener('mouseleave',()=>b.style.transform='scale(1)');
-      b.addEventListener('click',()=>{pick.remove();Chat.addReaction(cPath,m.id,S.meUid,emoji);});
-      pick.appendChild(b);
-    });
-    pick.style.top=`${window.innerHeight/2-25}px`;
-    pick.style.left=`${Math.max(8,(window.innerWidth-Chat.ALLOWED_REACTIONS.length*46)/2)}px`;
-    document.body.appendChild(pick);
-    const _cl=e=>{if(!pick.contains(e.target)){pick.remove();document.removeEventListener('click',_cl);}};
-    setTimeout(()=>document.addEventListener('click',_cl),10);
+  /* تفاعل سريع ❤️ بالنقر المزدوج على الرسالة */
+  function _quickReact(m,bub){
+    if(!m||!m.id||m.deleted)return;
+    const cPath=Chat.msgPath(S.screen,S.screen==='dm'?Chat.dmKey(S.meUid,_uidByName(S.activeId)||S.activeId):S.activeId);
+    const has=!!(m.reactions&&m.reactions['❤️']&&m.reactions['❤️'][S.meUid]);
+    has?Chat.removeReaction(cPath,m.id,S.meUid,'❤️'):Chat.addReaction(cPath,m.id,S.meUid,'❤️');
+    if(!has){
+      const r=bub.getBoundingClientRect();
+      const h=UI.el('div',`position:fixed;z-index:985;left:${r.left+r.width/2-20}px;top:${r.top+r.height/2-20}px;font-size:40px;line-height:1;pointer-events:none`);
+      h.textContent='❤️';document.body.appendChild(h);
+      try{const a=h.animate([{transform:'scale(.2)',opacity:0},{transform:'scale(1.25)',opacity:1,offset:.35},{transform:'translateY(-40px) scale(1)',opacity:0}],{duration:750,easing:'ease-out'});a.onfinish=()=>h.remove();}catch(_){h.remove();}
+      setTimeout(()=>h.remove(),1000);
+    }
+    try{navigator.vibrate&&navigator.vibrate(10);}catch(_){}
   }
 
   function _startEdit(m,cPath){
@@ -1550,6 +1603,7 @@
     const scroll=UI.el('div','flex:1;overflow-y:auto;padding:20px;-webkit-overflow-scrolling:touch;text-align:center');const inner=UI.el('div','max-width:400px;margin:0 auto;text-align:center');
     const avWrap=UI.el('div','margin-bottom:14px;display:inline-block;cursor:pointer');
     const uid = _uidByName(u);
+    const _uUid = uid || u;
     avWrap.appendChild(UI.makeAvatar(userData,100,{online:Chat.isOnline(S.presence, uid || u),ring:fwsUids().includes(_uUid),seen:Stories.isSeen(_uUid,S.stories)}));
     if(userData.photo)avWrap.addEventListener('click',()=>{S.viewImg=userData.photo;showImgViewer();});inner.appendChild(avWrap);
     const nm=UI.el('div',`font-weight:800;font-size:22px;color:${th().text};margin-bottom:4px`);
@@ -1558,7 +1612,7 @@
     const status=UI.el('div','font-size:13px;margin-bottom:8px');status.textContent=Chat.lastSeenText(S.presence, uid || u);status.style.color=Chat.isOnline(S.presence, uid || u)?'#22c55e':th().text3;inner.appendChild(status);
     if(userData.bio){const bio=UI.el('div',`color:${th().text2};font-size:14px;padding:0 20px;line-height:1.6;margin-bottom:16px`);bio.textContent=userData.bio;inner.appendChild(bio);}
     const mf=myFriends();
-    const _uUid=_uidByName(u)||u; if(S.stories[_uUid]&&Object.keys(S.stories[_uUid]).length>0){const stSec=UI.el('div',`margin-bottom:16px;padding:12px;background:${th().card};border-radius:14px;border:1px solid ${th().border}`);const stHdr=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:10px`);stHdr.textContent='القصص';stSec.appendChild(stHdr);const stRow=UI.el('div','display:flex;gap:8px;overflow-x:auto;justify-content:center;scrollbar-width:none');Stories.getUserStories(_uUid,S.stories).forEach(s=>{const img=document.createElement('img');img.src=s.url||s.data;img.alt='قصة';img.loading='lazy';img.style.cssText='width:60px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid #6366f1;flex-shrink:0';img.addEventListener('click',()=>{Stories.markSeen(_uUid);openStoryViewer(_uUid);});stRow.appendChild(img);});stSec.appendChild(stRow);inner.appendChild(stSec);}
+    if(S.stories[_uUid]&&Object.keys(S.stories[_uUid]).length>0){const stSec=UI.el('div',`margin-bottom:16px;padding:12px;background:${th().card};border-radius:14px;border:1px solid ${th().border}`);const stHdr=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:10px`);stHdr.textContent='القصص';stSec.appendChild(stHdr);const stRow=UI.el('div','display:flex;gap:8px;overflow-x:auto;justify-content:center;scrollbar-width:none');Stories.getUserStories(_uUid,S.stories).forEach(s=>{const img=document.createElement('img');img.src=s.url||s.data;img.alt='قصة';img.loading='lazy';img.style.cssText='width:60px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid #6366f1;flex-shrink:0';img.addEventListener('click',()=>{Stories.markSeen(_uUid);openStoryViewer(_uUid);});stRow.appendChild(img);});stSec.appendChild(stRow);inner.appendChild(stSec);}
     else if(!mf.includes(u)&&u!==S.me&&S.stories[u]&&Object.keys(S.stories[u]).length>0){const locked=UI.el('div',`padding:8px 14px;background:${th().card2};border-radius:10px;color:${th().text3};font-size:12px;border:1px solid ${th().border};margin-bottom:12px`);locked.textContent='🔒 القصص متاحة للأصدقاء فقط';inner.appendChild(locked);}
     const btnRow=UI.el('div','display:flex;gap:8px;margin-top:16px');const msgBtn=UI.el('button','flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer');msgBtn.textContent='💬 رسالة';msgBtn.addEventListener('click',()=>go('dm',u));btnRow.appendChild(msgBtn);
     if(!mf.includes(u)&&u!==S.me){const addBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'#a5b4fc':'#6366f1'};font-weight:700;font-size:14px;font-family:inherit;cursor:pointer`);addBtn.textContent='+ صديق';addBtn.addEventListener('click',async()=>{const targetUid2=_uidByName(u);if(!targetUid2)return UI.toast('المستخدم غير موجود','error');const myFriendUids=Object.keys(S.users[S.meUid]?.friends||{});const res=await Friends.sendRequest(S.meUid,targetUid2,S.users,myFriendUids);if(res.error)UI.toast(res.error,'error');else{UI.toast(`تم إرسال طلب صداقة إلى ${u} ✓`,'success');UI.playSound('notif');}});btnRow.appendChild(addBtn);}
@@ -1849,24 +1903,25 @@
 
   UI.applyTheme();
 
-  // جلسة محفوظة محلياً لكن Firebase Auth منتهية/مسجّلة خروج → ارجع لشاشة الدخول
-  if (S.me && !FB.authCurrentUser()) { Auth.clearSession(); S.me = null; }
-
-  if (S.me) {
-    // Recover uid from Auth if possible
+  // بدء الجلسة بعد التأكد من وجود مستخدم Firebase
+  let _sessionLive = false;
+  function _startSession() {
+    if (_sessionLive) return; _sessionLive = true;
     S.meUid = FB.authCurrentUser()?.uid || null;
     Chat.goOnline(S.meUid);
     UI.requestNotifPerm();
     startDataListeners();
+    // انتهاء الجلسة لاحقاً (حذف الحساب/إلغاء الصلاحية) → ارجع لشاشة الدخول
+    FB.authOnChange(u => {
+      if (!u && _sessionLive && S.me && S.screen !== 'auth') {
+        Auth.clearSession(); S.me = null; S.meUid = null;
+        location.reload();
+      }
+    });
     // Hide loading screen only after basic data is loaded (max 8s)
     const checkStart = Date.now();
     const checkData = () => {
-      if (Object.keys(S.users).length > 0 || Object.keys(S.groups || {}).length > 0) {
-        UI.showApp();
-        go('home');
-        _handleDeepLink();
-      } else if (Date.now() - checkStart > 8000) {
-        // Timeout — show app anyway to avoid infinite spinner
+      if (Object.keys(S.users).length > 0 || Object.keys(S.groups || {}).length > 0 || Date.now() - checkStart > 8000) {
         UI.showApp();
         go('home');
         _handleDeepLink();
@@ -1874,8 +1929,30 @@
         setTimeout(checkData, 300);
       }
     };
-    // Give listeners a moment to receive first snapshot
     setTimeout(checkData, 200);
+  }
+
+  if (S.me && !FB.authCurrentUser() && FB.authResolved()) {
+    // Firebase حسم: لا يوجد مستخدم (جلسة منتهية فعلاً) → ارجع لشاشة الدخول
+    try { localStorage.setItem('nbu_why', 'auth-null@' + Date.now()); } catch (e) {}
+    Auth.clearSession(); S.me = null;
+  }
+
+  if (S.me && FB.authCurrentUser()) {
+    _startSession();
+  } else if (S.me) {
+    // الشبكة بطيئة: Firebase لم يحسم الجلسة بعد → انتظر بدل تسجيل الخروج (حتى 40 ثانية)
+    let settled = false;
+    FB.authOnChange(u => {
+      if (settled) return; settled = true;
+      if (u) _startSession();
+      else { Auth.clearSession(); S.me = null; UI.showApp(); go('auth'); }
+    });
+    setTimeout(() => {
+      if (settled) return; settled = true;
+      UI.showApp(); go('auth'); // لا نمسح الجلسة المحلية: المحاولة التالية قد تنجح
+      UI.toast('تعذّر التحقق من الجلسة بسبب بطء الشبكة، حاول مجدداً', 'error');
+    }, 40000);
   } else {
     UI.showApp();
     go('auth');

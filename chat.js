@@ -181,7 +181,7 @@ window.Chat = (function () {
      Path: {chatPath}/{msgId}/reactions/{emoji}/{uid} → true
      مثال: dmMsgs/abc_xyz/msg1/reactions/❤️/uid123 → true
   ═══════════════════════════════════════════════════════════ */
-  const ALLOWED_REACTIONS = ['❤️','😂','😮','😢','👍','🔥'];
+  const ALLOWED_REACTIONS = ['❤️','😂','😮','😢','🙏','👍','🔥'];
 
   async function addReaction(chatPath, msgId, myUid, emoji) {
     if (!chatPath || !msgId || !myUid || !emoji) return { error: 'missing_args' };
