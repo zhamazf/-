@@ -62,10 +62,26 @@ window.E2E = (function () {
         t.onabort = () => rej(t.error);
       });
     };
+    // احتياطي: بعض المتصفحات (وضع خاص/متصفحات داخل التطبيقات) تمنع IndexedDB → localStorage
+    const LS = 'nbd_kv_';
+    const ls = {
+      get: k => { try { const v = localStorage.getItem(LS + k); return v === null ? null : JSON.parse(v); } catch (e) { return null; } },
+      set: (k, v) => { localStorage.setItem(LS + k, JSON.stringify(v)); },
+      del: k => { try { localStorage.removeItem(LS + k); } catch (e) {} },
+    };
     return {
-      get: k => tx('readonly', s => s.get(k)),
-      set: (k, v) => tx('readwrite', s => s.put(v, k)),
-      del: k => tx('readwrite', s => s.delete(k)),
+      get: async k => {
+        let v = null;
+        try { v = await tx('readonly', s => s.get(k)); } catch (e) { v = null; }
+        return (v === null || v === undefined) ? ls.get(k) : v;
+      },
+      set: async (k, v) => {
+        let ok = false;
+        try { await tx('readwrite', s => s.put(v, k)); ok = true; } catch (e) {}
+        try { ls.set(k, v); ok = true; } catch (e) {}
+        if (!ok) throw new Error('storage_unavailable');
+      },
+      del: async k => { try { await tx('readwrite', s => s.delete(k)); } catch (e) {} ls.del(k); },
     };
   }
 
@@ -101,8 +117,11 @@ window.E2E = (function () {
       return { kid, priv: kp.privateKey, pub: canon, created: Date.now() };
     }
 
+    // نحفظ المفاتيح بصيغة JWK (قابلة للتخزين في IndexedDB وlocalStorage معاً)
     async function _saveRing() {
-      await store.set('ring_' + _uid, _ring);
+      const ser = [];
+      for (const r of _ring) ser.push({ kid: r.kid, pub: r.pub, created: r.created, jwk: await subtle.exportKey('jwk', r.priv) });
+      await store.set('ring_' + _uid, ser);
       await store.set('cur_' + _uid, _curKid);
     }
 
@@ -116,7 +135,14 @@ window.E2E = (function () {
       _uid = uid; _ready = false; _ring = []; _curKid = null; _aesCache.clear(); _msgCache.clear(); _peerCache.clear();
       if (!subtle) { _status = 'unsupported'; return _status; }
       try {
-        _ring = (await store.get('ring_' + uid)) || [];
+        _ring = [];
+        for (const r of ((await store.get('ring_' + uid)) || [])) {
+          try {
+            let priv = r.priv;
+            if (!priv && r.jwk) priv = await subtle.importKey('jwk', r.jwk, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+            if (priv) _ring.push({ kid: r.kid, pub: r.pub, created: r.created, priv });
+          } catch (e) {}
+        }
         _curKid = (await store.get('cur_' + uid)) || null;
         if (_curKid && !_ring.some(r => r.kid === _curKid)) _curKid = null;
         _remote = await FB.get(`userKeys/${uid}`);

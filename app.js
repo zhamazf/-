@@ -1644,8 +1644,17 @@
       } else {
         const ext = payload.type==='image' ? 'jpg' : payload.type==='video' ? 'mp4' : 'webm';
         const path = FB.storagePath(payload.type+'s', S.meUid, ext);
-        const { url } = await FB.uploadFile(path, payload.data);
-        finalPayload = { type: payload.type, url, storagePath: path };
+        try {
+          const { url } = await FB.uploadFile(path, payload.data);
+          finalPayload = { type: payload.type, url, storagePath: path };
+        } catch (upErr) {
+          // Storage غير متاح/بطيء: نرسل الملف مضمّناً بالرسالة (بحدود حجم آمنة)
+          let data = payload.data;
+          if (payload.type==='image') { data = await UI.compressDataUrl(data, 1280, 0.8); if (data.length > 1500000) data = await UI.compressDataUrl(data, 900, 0.6); }
+          const lim = payload.type==='video' ? 5500000 : 1500000;
+          if (data.length > lim) throw new Error('تعذّر رفع الملف (التخزين غير متاح) والملف كبير للإرسال المباشر');
+          finalPayload = { type: payload.type, url: data };
+        }
       }
       if (payload.duration) finalPayload.duration = payload.duration;
       if(type==='dm'){await Chat.sendDM(S.meUid,_t,finalPayload);}
@@ -2065,7 +2074,7 @@
   function showStoryPreview(){const ex=document.getElementById('story-preview-ov');if(ex)ex.remove();const ov=UI.el('div','position:fixed;inset:0;background:rgba(0,0,0,.96);z-index:998;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px');ov.id='story-preview-ov';const img=document.createElement('img');img.src=S.storyPreview;img.alt='معاينة القصة قبل النشر';img.style.cssText='max-width:90vw;max-height:65vh;object-fit:contain;border-radius:14px';ov.appendChild(img);const btnRow=UI.el('div','display:flex;gap:10px');const postBtn=UI.el('button','padding:11px 24px;border:none;border-radius:14px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;font-size:15px;font-family:inherit;cursor:pointer');postBtn.textContent='نشر القصة 📢';postBtn.addEventListener('click',async()=>{
   if(!S.meUid){UI.toast('يجب تسجيل الدخول أولاً','error');return;}
   postBtn.disabled=true; postBtn.textContent='جار النشر...';
-  const _pr=await Stories.post(S.meUid,S.storyPreview);
+  let _pr;try{_pr=await Stories.post(S.meUid,S.storyPreview);}catch(e){_pr={error:'فشل نشر القصة: '+(e&&e.message||'')};}
   if(_pr&&_pr.error){UI.toast(_pr.error,'error');postBtn.disabled=false;postBtn.textContent='نشر القصة 📢';return;}
   S.storyPreview=null;ov.remove();UI.toast('تم نشر القصة ✓','success');
 });const cancelBtn=UI.el('button',`padding:11px 20px;border:1px solid rgba(255,255,255,.2);border-radius:14px;background:transparent;color:#fff;font-family:inherit;font-size:15px;cursor:pointer`);cancelBtn.textContent='إلغاء';cancelBtn.addEventListener('click',()=>{S.storyPreview=null;ov.remove();});btnRow.appendChild(postBtn);btnRow.appendChild(cancelBtn);ov.appendChild(btnRow);APP.appendChild(ov);}
@@ -2174,7 +2183,7 @@
         return;
       }
       if (st === 'needs-restore' || st === 'conflict') { _openE2ESetup(st); return; }
-      if (st === 'error') { UI.toast('تعذّر تجهيز التشفير الآن — سيُعاد المحاولة لاحقاً', 'warn'); return; }
+      if (st === 'error') { UI.toast('🔒 تعذّر تجهيز التشفير: ' + _e2eErr(E2E.lastError()), 'error'); return; }
       if (st === 'ready' && !_lsGet(_EF + 'bk_' + S.meUid)) {
         const has = await E2E.hasBackup();
         _lsSet(_EF + 'bk_' + S.meUid, '1');
@@ -2210,7 +2219,9 @@
     if (m === 'wrong_passphrase') return 'كلمة السر غير صحيحة';
     if (m === 'no_backup') return 'لا توجد نسخة احتياطية محفوظة لحسابك';
     if (m === 'weak_passphrase') return 'كلمة السر لازم 8 أحرف على الأقل';
-    return 'حدث خطأ، حاول مجدداً';
+    if (/permission|PERMISSION/.test(m + (e && e.code || ''))) return 'قواعد Firebase غير محدّثة — الصق ملف القواعد الجديد في Firebase Console ثم Publish';
+    if (m === 'storage_unavailable') return 'المتصفح يمنع التخزين المحلي — افتح التطبيق من Chrome مباشرة';
+    return 'حدث خطأ: ' + (m || (e && e.code) || 'غير معروف');
   };
 
   // يظهر عندما لا يوجد مفتاح محلي صالح (جهاز جديد / مفتاح جديد من جهاز آخر)

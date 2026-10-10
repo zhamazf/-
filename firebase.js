@@ -249,14 +249,19 @@ window.FB = (function () {
 
       const ref  = _storage.ref(path);
       const task = ref.put(blob);
+      let settled = false, stall = null;
+      const fin = (fn, v) => { if (settled) return; settled = true; clearTimeout(stall); fn(v); };
+      // إن توقف الرفع (Storage غير مفعّل/شبكة ميتة) لا ننتظر للأبد
+      const arm = ms => { clearTimeout(stall); stall = setTimeout(() => { try { task.cancel(); } catch (e) {} fin(reject, new Error('upload_timeout')); }, ms); };
+      arm(20000);
       task.on('state_changed',
-        snap => { if (onProgress) onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)); },
-        err  => reject(err),
+        snap => { arm(20000); if (onProgress) onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)); },
+        err  => fin(reject, err),
         async () => {
           try {
             const url = await task.snapshot.ref.getDownloadURL();
-            resolve({ url, path });
-          } catch (e) { reject(e); }
+            fin(resolve, { url, path });
+          } catch (e) { fin(reject, e); }
         }
       );
     });

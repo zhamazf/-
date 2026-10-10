@@ -102,12 +102,16 @@ window.Stories = (function () {
     // v6: رفع على Firebase Storage بدل تخزين base64 في الـ DB
     try {
       const path = FB.storagePath('stories', me, 'jpg');
-      const { url } = await FB.uploadFile(path, compressed);
-      await FB.push(`stories/${me}`, {
-        url, storagePath: path,
-        ts:   Date.now(),
-        type: 'image'
-      });
+      let rec;
+      try {
+        const { url } = await FB.uploadFile(path, compressed);
+        rec = { url, storagePath: path };
+      } catch (upErr) {
+        // Storage غير متاح: نخزّن الصورة المضغوطة مباشرة في القصة
+        if (compressed.length > 1500000) throw upErr;
+        rec = { url: compressed };
+      }
+      await FB.push(`stories/${me}`, Object.assign(rec, { ts: Date.now(), type: 'image' }));
       return { ok: true };
     } catch (e) {
       return { error: 'فشل رفع القصة — تحقق من الاتصال: ' + (e.message || '') };
@@ -212,12 +216,15 @@ window.Stories = (function () {
     // v6: رفع على Firebase Storage بدل تخزين base64 في الـ DB
     try {
       const path = FB.storagePath('stories', me, 'mp4');
-      const { url } = await FB.uploadFile(path, dataUrl);
-      await FB.push(`stories/${me}`, {
-        url, storagePath: path,
-        ts:   Date.now(),
-        type: 'video',
-      });
+      let rec;
+      try {
+        const { url } = await FB.uploadFile(path, dataUrl);
+        rec = { url, storagePath: path };
+      } catch (upErr) {
+        if (dataUrl.length > 5500000) throw upErr;
+        rec = { url: dataUrl };
+      }
+      await FB.push(`stories/${me}`, Object.assign(rec, { ts: Date.now(), type: 'video' }));
       return { ok: true };
     } catch (e) {
       return { error: 'فشل رفع الفيديو — تحقق من الاتصال: ' + (e.message || '') };
