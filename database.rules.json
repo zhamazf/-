@@ -1,6 +1,5 @@
 {
   "rules": {
-
     "users": {
       "$uid": {
         ".read": "auth !== null",
@@ -17,7 +16,55 @@
         }
       }
     },
-
+    "userData": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        "chatPrefs": {
+          "$key": {
+            "pinned": {
+              ".validate": "newData.isNumber()"
+            },
+            "archived": {
+              ".validate": "newData.isNumber()"
+            },
+            "hiddenAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "muted": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "e2eBackup": {
+          ".validate": "newData.hasChildren(['v','salt','iv','ct','iter','ts'])",
+          "v": {
+            ".validate": "newData.isNumber()"
+          },
+          "salt": {
+            ".validate": "newData.isString() && newData.val().length < 100"
+          },
+          "iv": {
+            ".validate": "newData.isString() && newData.val().length < 100"
+          },
+          "ct": {
+            ".validate": "newData.isString() && newData.val().length < 60000"
+          },
+          "iter": {
+            ".validate": "newData.isNumber() && newData.val() >= 100000 && newData.val() <= 2000000"
+          },
+          "ts": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
     "usernames": {
       ".read": "auth !== null && query.orderByKey === true && query.limitToFirst <= 10 && query.startAt.length >= 1",
       "$username": {
@@ -26,14 +73,12 @@
         ".validate": "newData.isString()"
       }
     },
-
     "dmMsgs": {
       "$dmKey": {
         ".read": "auth !== null && $dmKey.contains(auth.uid)",
         ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists()"
       }
     },
-
     "groups": {
       "$gid": {
         ".read": "auth !== null && (data.child('members').child(auth.uid).exists() || data.child('admin').val() === auth.uid)",
@@ -67,42 +112,36 @@
         }
       }
     },
-
     "groupMsgs": {
       "$gid": {
         ".read": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
         ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()"
       }
     },
-
     "groupPolls": {
       "$gid": {
         ".read": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
         ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()"
       }
     },
-
     "pinnedMsgs": {
       "$pinKey": {
         ".read": "auth !== null && (($pinKey.beginsWith('dmMsgs_') && $pinKey.contains(auth.uid)) || ($pinKey.beginsWith('groupMsgs_') && root.child('groups').child($pinKey.replace('groupMsgs_', '')).child('members').child(auth.uid).exists()))",
         ".write": "auth !== null && (($pinKey.beginsWith('dmMsgs_') && $pinKey.contains(auth.uid)) || ($pinKey.beginsWith('groupMsgs_') && root.child('groups').child($pinKey.replace('groupMsgs_', '')).child('members').child(auth.uid).exists()))"
       }
     },
-
     "inviteCodes": {
       "$code": {
         ".read": "auth !== null",
         ".write": "auth !== null && ((newData.exists() && newData.isString() && root.child('groups').child(newData.val()).child('admin').val() === auth.uid) || (!newData.exists() && data.exists() && root.child('groups').child(data.val()).child('admin').val() === auth.uid))"
       }
     },
-
     "presence": {
       ".read": "auth !== null",
       "$uid": {
         ".write": "$uid === auth.uid"
       }
     },
-
     "friendRequests": {
       "$targetUid": {
         ".read": "$targetUid === auth.uid",
@@ -113,7 +152,6 @@
         }
       }
     },
-
     "blockedUsers": {
       "$uid": {
         ".read": "$uid === auth.uid",
@@ -123,7 +161,6 @@
         }
       }
     },
-
     "notifications": {
       "$uid": {
         ".read": "$uid === auth.uid",
@@ -132,13 +169,11 @@
         }
       }
     },
-
     "reports": {
       "$rid": {
         ".write": "auth !== null && !data.exists() && newData.child('reporterUid').val() === auth.uid"
       }
     },
-
     "readReceipts": {
       "$chatKey": {
         ".read": "auth !== null",
@@ -147,19 +182,16 @@
         }
       }
     },
-
     "typing": {
       ".read": "auth !== null",
       ".write": "auth !== null"
     },
-
     "stories": {
       ".read": "auth !== null",
       "$uid": {
         ".write": "$uid === auth.uid"
       }
     },
-
     "storyViews": {
       "$owner": {
         ".read": "$owner === auth.uid",
@@ -170,7 +202,28 @@
           }
         }
       }
+    },
+    "userKeys": {
+      "$uid": {
+        ".read": "auth !== null",
+        ".write": "auth !== null && $uid === auth.uid",
+        ".validate": "newData.hasChildren(['pub','kid','v','ts'])",
+        "pub": {
+          ".validate": "newData.isString() && newData.val().length > 20 && newData.val().length < 400"
+        },
+        "kid": {
+          ".validate": "newData.isString() && newData.val().length === 32"
+        },
+        "v": {
+          ".validate": "newData.isNumber()"
+        },
+        "ts": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
-
   }
 }

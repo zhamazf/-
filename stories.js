@@ -262,10 +262,7 @@ window.Stories = (function () {
 
     const dmKey = [myUid, storyOwnerUid].sort().join('_');
     try {
-      await FB.push(`dmMsgs/${dmKey}`, {
-        sender:  myUid,
-        ts:      Date.now(),
-        status:  'sent',
+      const payload = {
         type:    'text',
         text:    replyText.trim().slice(0, 500),
         // مرجع للقصة المردود عليها
@@ -276,7 +273,10 @@ window.Stories = (function () {
             ? (storyData.text || '').slice(0, 60)
             : '📸 قصة',
         },
-      });
+      };
+      // عبر Chat.sendDM لتُشفَّر الرسالة تلقائياً إن كانت المحادثة مشفّرة
+      if (window.Chat && Chat.sendDM) await Chat.sendDM(myUid, storyOwnerUid, payload);
+      else await FB.push(`dmMsgs/${dmKey}`, { sender: myUid, ts: Date.now(), status: 'sent', ...payload });
       return { ok: true };
     } catch (e) {
       return { error: e.message };

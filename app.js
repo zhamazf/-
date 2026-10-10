@@ -61,6 +61,9 @@
     storyPreview: null,
     viewImg:      null,
     dark:         UI.isDark(),
+    prefs:        {},                  // تفضيلات المحادثات (تثبيت/كتم/أرشفة/إخفاء) — خاصة
+    blocked:      {},                  // uids التي حظرتها
+    showArchive:  false,
     groupMsgsCache: {},  // v2: { [gid]: rawMsgs } for unread counting
     _pinnedMsg:   null,  // v2: current pinned message
   };
@@ -181,6 +184,8 @@
 
     const cb = msgs => {
       try {
+        const _hAt = (_pref(type,id).hiddenAt)||0;
+        if (_hAt && msgs) msgs = msgs.filter(m => (m.ts||0) > _hAt);
         if (!msgs || !msgs.length) { S.msgs=[]; _msgSnap.clear(); renderMsgs(); return; }
         const isFirst = _prevLen===0;
         if (isFirst) {
@@ -194,8 +199,8 @@
               // رسالة جديدة تماماً
               _seenMsgIds.add(m.id); _msgSnap.set(m.id, snap);
               if (m.sender!==S.meUid && m.sender!==S.me) {
-                UI.playSound('recv');
-                UI.showNotif(type==='dm'?`رسالة من ${_nameByUid(m.sender)||m.sender}`:`رسالة في مجموعة`, m.type==='text'?m.text:'🖼 وسائط', ()=>window.focus());
+                if(!_pref(type,id).muted){ UI.playSound('recv');
+                UI.showNotif(type==='dm'?`رسالة من ${_nameByUid(m.sender)||m.sender}`:`رسالة في مجموعة`, m.type==='text'?m.text:'🖼 وسائط', ()=>window.focus()); }
                 appendMsg(m);
               } else {
                 replaceOptimistic(m);
@@ -264,6 +269,13 @@
     }));
     // groups: لا نقرأ /groups كاملاً — بدلاً نستمع per-group في _startGroupListeners()
     // يُستدعى من rebuildUserMaps بعد تحميل users
+    addU(FB.on(`userData/${S.meUid}/chatPrefs`, v=>{S.prefs=v||{}; refreshDyn();}));
+    addU(FB.on(`blockedUsers/${S.meUid}`, v=>{
+      const was=JSON.stringify(Object.keys(S.blocked||{}).sort());
+      S.blocked=v||{};
+      if(S.screen==='dm'&&was!==JSON.stringify(Object.keys(S.blocked).sort())&&_dmReady)_rerenderChat();
+      else refreshDyn();
+    }));
     addU(FB.on('presence', v=>{S.presence=v||{}; refreshPresence();}));
     addU(FB.on('typing',   v=>{S.typingMap=v||{}; refreshTyping();}));
     // Periodic expired-story cleanup every 5 minutes
@@ -297,16 +309,27 @@
 
   // ── DM listeners — واحد لكل صديق (Rules: $dmKey.contains(auth.uid)) ──
   const _dmUnsubs = {};
+  const _dmRaw = {}, _dmSeq = {};
+  // يفك تشفير آخر رسائل المحادثة (للمعاينة وعدّاد غير المقروء) بترتيب آمن ضد التأخّر
+  function _applyDmChat(key) {
+    const my = (_dmSeq[key] = (_dmSeq[key] || 0) + 1);
+    const raw = _dmRaw[key];
+    const done = out => {
+      if (my !== _dmSeq[key]) return;
+      if (out) S.dmChats[key] = out; else delete S.dmChats[key];
+      refreshDyn();
+    };
+    if (!raw || !window.E2E) return done(raw);
+    E2E.decryptMap(key, raw).then(done).catch(() => done(raw));
+  }
+  function _dmRedecryptAll() { Object.keys(_dmRaw).forEach(_applyDmChat); }
   function _startDmListeners() {
     if (!S.meUid) return;
     const friendUids = Object.keys(S.users[S.meUid]?.friends || {});
     friendUids.forEach(fUid => {
       const key = [S.meUid, fUid].sort().join('_');
       if (_dmUnsubs[key]) return;
-      _dmUnsubs[key] = FB.on(`dmMsgs/${key}`, v => {
-        if (v) S.dmChats[key] = v; else delete S.dmChats[key];
-        refreshDyn();
-      });
+      _dmUnsubs[key] = FB.onLimit(`dmMsgs/${key}`, 40, v => { _dmRaw[key] = v || null; _applyDmChat(key); });
       // آخر قراءة محفوظة بالسيرفر (وإلا يرجع عدّاد غير المقروء بعد كل إعادة فتح)
       const rKey = '_rr_' + key;
       if (!_dmUnsubs[rKey]) {
@@ -695,6 +718,16 @@
     return tabs;
   }
 
+  function _buildArchiveRow(n){
+    const open=S.showArchive;
+    const row=UI.el('div',`display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;cursor:pointer;background:${th().card2};border:1px solid ${th().border};margin-bottom:8px;color:${th().text2};font-size:13px;font-weight:700`);
+    const ic=UI.el('span','font-size:18px');ic.textContent=open?'⬅️':'🗄';
+    const t=UI.el('span','flex:1');t.textContent=open?'رجوع إلى المحادثات':`الأرشيف (${n})`;
+    row.appendChild(ic);row.appendChild(t);
+    row.addEventListener('click',()=>{S.showArchive=!S.showArchive;const c=document.getElementById('home-content');if(c)renderTabContent(c);});
+    return row;
+  }
+
   function renderTabContent(container){
     container.innerHTML='';
     if(S.tab==='chats'){
@@ -715,14 +748,26 @@
       ndmBtn.addEventListener('click',doNdm); ndmInp.addEventListener('keydown',e=>{if(e.key==='Enter')doNdm();});
       ndmRow.appendChild(ndmInp); ndmRow.appendChild(ndmBtn); container.appendChild(ndmRow);
       plusBtn.addEventListener('click',()=>{showNdm=!showNdm;ndmRow.style.display=showNdm?'flex':'none';if(showNdm)ndmInp.focus();});
-      const others=Object.keys(S.usersByName).filter(u=>u!==S.me&&Chat.getDMMessages(S.meUid,_uidByName(u)||u,S.dmChats).length>0);
-      if(!others.length){const emp=UI.el('div',`color:${th().text3};font-size:13px;padding:16px 0;text-align:center`);emp.textContent='اضغط + لبدء محادثة جديدة';container.appendChild(emp);}
-      others.forEach(u=>container.appendChild(buildChatItem(u)));
+      const all=Object.keys(S.usersByName).filter(u=>u!==S.me&&Chat.getDMMessages(S.meUid,_uidByName(u)||u,S.dmChats).length>0)
+        .map(u=>{const last=Chat.getLastDMMsg(S.meUid,_uidByName(u)||u,S.dmChats);const ts=last?last.ts:0;return {u,ts,pin:_pref('dm',u).pinned||0,bucket:_chatBucket('dm',u,ts)};});
+      const others=all.filter(x=>x.bucket==='main').sort(_sortChats);
+      const arch=all.filter(x=>x.bucket==='archived').sort(_sortChats);
+      if(!arch.length)S.showArchive=false;
+      if(arch.length)container.appendChild(_buildArchiveRow(arch.length));
+      if(S.showArchive&&arch.length){arch.forEach(x=>container.appendChild(buildChatItem(x.u)));return;}
+      if(!others.length){const emp=UI.el('div',`color:${th().text3};font-size:13px;padding:16px 0;text-align:center`);emp.textContent=arch.length?'كل محادثاتك في الأرشيف':'اضغط + لبدء محادثة جديدة';container.appendChild(emp);}
+      others.forEach(x=>container.appendChild(buildChatItem(x.u)));
     } else if(S.tab==='groups'){
       const btnRow=UI.el('div','display:flex;gap:8px;margin-bottom:14px');
       const ngBtn=UI.el('button','flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;font-size:13px;font-family:inherit;cursor:pointer'); ngBtn.textContent='+ مجموعة جديدة'; ngBtn.addEventListener('click',()=>go('newGroup')); btnRow.appendChild(ngBtn);
       const jnBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'#a5b4fc':'#6366f1'};font-weight:700;font-size:13px;font-family:inherit;cursor:pointer`); jnBtn.textContent='🔗 انضمام'; jnBtn.addEventListener('click',()=>go('join')); btnRow.appendChild(jnBtn); container.appendChild(btnRow);
-      const grps=myGroups();
+      const allG=myGroups().map(g=>{const ts=_groupLastTs(g);return {g,ts,pin:_pref('group',g.id).pinned||0,bucket:_chatBucket('group',g.id,ts)};});
+      const grps=allG.filter(x=>x.bucket==='main').sort(_sortChats).map(x=>x.g);
+      const archG=allG.filter(x=>x.bucket==='archived').sort(_sortChats).map(x=>x.g);
+      if(!archG.length)S.showArchive=false;
+      if(archG.length)container.appendChild(_buildArchiveRow(archG.length));
+      if(S.showArchive&&archG.length){archG.forEach(g=>container.appendChild(buildGroupItem(g)));return;}
+      if(!grps.length&&archG.length){const emp=UI.el('div',`color:${th().text3};text-align:center;padding:30px 20px;font-size:14px`);emp.textContent='كل مجموعاتك في الأرشيف';container.appendChild(emp);return;}
       if(!grps.length){const emp=UI.el('div',`color:${th().text3};text-align:center;padding:40px 20px;font-size:14px`);emp.textContent='لا توجد مجموعات بعد';container.appendChild(emp);setTimeout(()=>{const c2=document.getElementById('home-content');if(c2&&S.screen==='home'&&S.tab==='groups')renderTabContent(c2);},2000);return;}
       grps.forEach(g=>container.appendChild(buildGroupItem(g)));
     } else if(S.tab==='unread'){
@@ -738,15 +783,22 @@
     const _fUid2=_uidByName(u)||u; const hasSt=fwsUids().includes(_fUid2); const seenSt=Stories.isSeen(_fUid2,S.stories);
     const item=UI.el('div',`display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:14px;cursor:pointer;background:${ur?'#6366f111':th().card};border:1px solid ${ur?'#6366f133':th().border};margin-bottom:6px;transition:opacity .12s`);
     item.addEventListener('click',()=>go('dm',u));
+    _bindLongPress(item,()=>_openChatSheet('dm',u));
     const uid = _uidByName(u);
     item.appendChild(UI.makeAvatar(_userData(u),44,{online:Chat.isOnline(S.presence, uid || u),ring:hasSt,seen:seenSt,onClick:hasSt?e=>{e.stopPropagation();Stories.markSeen(_fUid2);openStoryViewer(_fUid2);}:null}));
     const info=UI.el('div','flex:1;min-width:0');
-    const nm=UI.el('div',`font-weight:${ur?700:600};font-size:14px;color:${th().text}`); nm.textContent=u; info.appendChild(nm);
+    const _pp=_pref('dm',u);
+    const nm=UI.el('div',`font-weight:${ur?700:600};font-size:14px;color:${th().text};display:flex;align-items:center;gap:5px`);
+    const nmT=UI.el('span','overflow:hidden;text-overflow:ellipsis;white-space:nowrap');nmT.textContent=u;nm.appendChild(nmT);
+    if(_pp.pinned){const pi=UI.el('span','font-size:11px');pi.textContent='📌';nm.appendChild(pi);}
+    if(_pp.muted){const mi=UI.el('span','font-size:11px;opacity:.7');mi.textContent='🔕';nm.appendChild(mi);}
+    if(_isBlockedName(u)){const bi=UI.el('span','font-size:11px');bi.textContent='🚫';nm.appendChild(bi);}
+    info.appendChild(nm);
     if(last){const prev=UI.el('div',`font-size:12px;color:${ur?'#6366f1':th().text3};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${ur?600:400}`);prev.textContent=(last.sender===S.me?'أنت: ':'')+UI.preview(last);info.appendChild(prev);}
     item.appendChild(info);
     const meta=UI.el('div','display:flex;flex-direction:column;align-items:flex-end;gap:3px');
     if(last){const ts=UI.el('span',`font-size:10px;color:${th().text3}`);ts.textContent=UI.fmtFull(last.ts);meta.appendChild(ts);}
-    if(ur>0){const b=UI.el('div','background:#6366f1;color:#fff;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px');b.textContent=ur;meta.appendChild(b);}
+    if(ur>0){const b=UI.el('div',`background:${_pp.muted?'#9ca3af':'#6366f1'};color:#fff;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px`);b.textContent=ur;meta.appendChild(b);}
     item.appendChild(meta); return item;
   }
 
@@ -755,10 +807,12 @@
     const ug=unreadGrps()[g.id]||0; // v2: unread count for this group
     const item=UI.el('div',`display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:14px;cursor:pointer;background:${ug?'#6366f111':th().card};border:1px solid ${ug?'#6366f133':th().border};margin-bottom:6px`);
     item.addEventListener('click',()=>go('group',g.id));
+    _bindLongPress(item,()=>_openChatSheet('group',g.id));
     if(g.photo){const img=document.createElement('img');img.src=g.photo;img.alt=`صورة مجموعة ${g.name||''}`;img.loading='lazy';img.style.cssText='width:44px;height:44px;border-radius:12px;object-fit:cover;flex-shrink:0';item.appendChild(img);}
     else{const c=UI.userColor(g.name);const ic=UI.el('div',`width:44px;height:44px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,${c},${UI.userColor(g.name+'1')});display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px;color:#fff`);ic.textContent=g.name[0];item.appendChild(ic);}
     const info=UI.el('div','flex:1;min-width:0'); const nr=UI.el('div','display:flex;align-items:center;gap:6px');
     const nm=UI.el('span',`font-weight:${ug?700:600};font-size:14px;color:${th().text}`); nm.textContent=g.name; nr.appendChild(nm);
+    {const _gp=_pref('group',g.id);if(_gp.pinned){const pi=UI.el('span','font-size:11px');pi.textContent='📌';nr.appendChild(pi);}if(_gp.muted){const mi=UI.el('span','font-size:11px;opacity:.7');mi.textContent='🔕';nr.appendChild(mi);}}
     if(pc>0){const b=UI.el('span','background:#fee2e2;color:#ef4444;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px');b.textContent=`${pc} طلب`;nr.appendChild(b);}
     info.appendChild(nr);
     const sub=UI.el('div',`font-size:11px;color:${th().text3}`); sub.textContent=`${Groups.getMembers(g).length} عضو`; info.appendChild(sub);
@@ -791,7 +845,9 @@
     }
     else if(g){titleEl.textContent=g.name;subEl.textContent=`${Groups.getMembers(g).length} عضو`;subEl.style.color=th().text3;}
     info.appendChild(titleEl); info.appendChild(subEl); bar.appendChild(info);
+    if(type==='dm'){const lk=UI.el('button','background:none;border:none;cursor:pointer;font-size:16px;padding:4px;display:none');lk.id='e2e-lock';lk.setAttribute('aria-label','التشفير');lk.addEventListener('click',()=>_openSafety(S.activeId));bar.appendChild(lk);setTimeout(_e2eRefreshLock,0);}
     const custBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:18px;padding:4px'); custBtn.textContent='🎨'; custBtn.style.color=th().text2; custBtn.addEventListener('click',showCustomizeSheet); bar.appendChild(custBtn);
+    const moreBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:22px;padding:2px 6px;line-height:1;font-weight:800'); moreBtn.textContent='⋮'; moreBtn.style.color=th().text2; moreBtn.setAttribute('aria-label','خيارات المحادثة'); moreBtn.addEventListener('click',()=>_openChatSheet(type,S.activeId)); bar.appendChild(moreBtn);
     if(type==='group'&&g){
       const pBtn=UI.el('button',`padding:7px 11px;border:1px solid ${th().border};border-radius:12px;background:${S.panel?'#6366f122':th().card2};color:${UI.isDark()?'#a5b4fc':'#6366f1'};font-family:inherit;font-size:12px;font-weight:700;cursor:pointer`); pBtn.textContent=Groups.canManage(g,S.meUid)?'👑':'👥';
       pBtn.id='group-panel-btn';pBtn.addEventListener('click',()=>{S.panel=!S.panel;pBtn.style.background=S.panel?'#6366f122':th().card2;const body=document.getElementById('group-body');const ex=document.getElementById('group-panel');if(S.panel&&body)buildGroupPanel(body);else if(ex)ex.remove();});
@@ -809,7 +865,7 @@
   /* ═══════════════════════════════════════════════════════════
      DM / GROUP
   ═══════════════════════════════════════════════════════════ */
-  function renderDM(){APP.appendChild(buildChatTopbar('dm'));APP.appendChild(buildMsgsArea());APP.appendChild(buildChatInput('dm'));}
+  function renderDM(){APP.appendChild(buildChatTopbar('dm'));APP.appendChild(buildMsgsArea());APP.appendChild(_isBlockedName(S.activeId)?buildBlockedBar(S.activeId):buildChatInput('dm'));_dmReady=true;}
 
   function renderGroup(){
     // تأكد من وجود بيانات المجموعة
@@ -951,6 +1007,155 @@
     return '✓';                       // sent
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     تفضيلات المحادثات: تثبيت / كتم / أرشفة / إخفاء — محفوظة لحسابك فقط
+     userData/{uid}/chatPrefs/{dmKey | g_gid} = { pinned, muted, archived, hiddenAt }
+  ═══════════════════════════════════════════════════════════ */
+  let _dmReady = false; // بعد أول عرض للمحادثة (لتفادي إعادة رسم مبكرة)
+  const _prefKey = (type,id) => type==='dm' ? Chat.dmKey(S.meUid,_uidByName(id)||id) : 'g_'+id;
+  const _pref    = (type,id) => (S.prefs && S.prefs[_prefKey(type,id)]) || {};
+  const _isBlockedName = name => { const u=_uidByName(name); return !!(u && S.blocked && S.blocked[u]); };
+
+  async function _setPref(type,id,patch){
+    if(!S.meUid) return;
+    const key=_prefKey(type,id);
+    const cur=Object.assign({},S.prefs[key]||{});
+    const upd={};
+    Object.keys(patch).forEach(k=>{
+      const v=patch[k];
+      if(v===null||v===false){ upd[k]=null; delete cur[k]; } else { upd[k]=v; cur[k]=v; }
+    });
+    S.prefs[key]=cur; refreshDyn();
+    try{ await FB.upd(`userData/${S.meUid}/chatPrefs/${key}`, upd); }
+    catch(e){ UI.toast('تعذّر حفظ الإعداد','error'); }
+  }
+
+  // أين تُعرض المحادثة؟ 'main' | 'archived' | 'hidden'
+  function _chatBucket(type,id,lastTs){
+    const p=_pref(type,id); lastTs=lastTs||0;
+    if(p.hiddenAt && lastTs<=p.hiddenAt) return 'hidden';
+    if(p.archived && (lastTs<=p.archived || p.muted)) return 'archived';
+    return 'main';
+  }
+  const _sortChats = (a,b) => ((b.pin||0)-(a.pin||0)) || ((b.ts||0)-(a.ts||0));
+  function _groupLastTs(g){
+    const raw=S.groupMsgsCache&&S.groupMsgsCache[g.id]; let t=g.createdAt||0;
+    if(raw) Object.values(raw).forEach(m=>{ if(m&&m.ts>t)t=m.ts; });
+    return t;
+  }
+
+  // ضغط مطوّل (لمس أو كليك يمين) على عنصر
+  function _bindLongPress(el,fn){
+    let t=null,sx=0,sy=0,fired=false;
+    el.style.webkitTouchCallout='none'; el.style.userSelect='none'; el.style.webkitUserSelect='none';
+    el.addEventListener('touchstart',e=>{
+      fired=false; const p=e.touches[0]; sx=p.clientX; sy=p.clientY;
+      clearTimeout(t); t=setTimeout(()=>{fired=true;try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}fn();},520);
+    },{passive:true});
+    el.addEventListener('touchmove',e=>{const p=e.touches[0];if(Math.abs(p.clientX-sx)>10||Math.abs(p.clientY-sy)>10)clearTimeout(t);},{passive:true});
+    ['touchend','touchcancel'].forEach(ev=>el.addEventListener(ev,()=>clearTimeout(t),{passive:true}));
+    el.addEventListener('contextmenu',e=>{e.preventDefault();clearTimeout(t);fired=true;fn();});
+    el.addEventListener('click',e=>{if(fired){e.stopImmediatePropagation();e.preventDefault();fired=false;}},true);
+  }
+
+  function _rerenderChat(){
+    if(S.screen!=='dm'&&S.screen!=='group')return;
+    const t=S.screen, id=S.activeId; renderScreen(); startMsgListener(t,id);
+  }
+
+  /* ورقة إجراءات المحادثة (من الضغط المطوّل أو زر ⋮) */
+  function _openChatSheet(type,id){
+    const ex=document.getElementById('chat-sheet');if(ex)ex.remove();
+    const p=_pref(type,id);
+    const isDm=type==='dm';
+    const targetUid=isDm?_uidByName(id):null;
+    const g=!isDm?S.groups[id]:null;
+    const blocked=isDm&&_isBlockedName(id);
+    const title=isDm?id:(g&&g.name)||'مجموعة';
+    const inChat=(S.screen===type&&S.activeId===id);
+    const close=()=>{const e=document.getElementById('chat-sheet');if(e)e.remove();};
+
+    const ov=UI.el('div','position:fixed;inset:0;z-index:990;display:flex;align-items:flex-end;justify-content:center');ov.id='chat-sheet';
+    const bg=UI.el('div','position:absolute;inset:0;background:rgba(0,0,0,.5);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)');bg.addEventListener('click',close);ov.appendChild(bg);
+    const sheet=UI.el('div',`background:${th().card};width:100%;max-width:500px;border-radius:24px 24px 0 0;padding:10px 12px 18px;position:relative;z-index:1;max-height:82vh;overflow-y:auto;animation:slideUp .22s ease`);
+    sheet.appendChild(Object.assign(UI.el('div',`width:40px;height:4px;background:${th().border};border-radius:2px;margin:4px auto 12px`),{}));
+    const hd=UI.el('div','display:flex;align-items:center;gap:10px;padding:2px 8px 12px');
+    if(isDm)hd.appendChild(UI.makeAvatar(_userData(id)||{username:id},40));
+    else{const gi=UI.el('div',`width:40px;height:40px;border-radius:12px;background:${th().card2};display:flex;align-items:center;justify-content:center;overflow:hidden`);
+      if(g&&g.photo){const im=document.createElement('img');im.src=g.photo;im.alt='';im.style.cssText='width:100%;height:100%;object-fit:cover';gi.appendChild(im);}else gi.textContent='👥';hd.appendChild(gi);}
+    const ht=UI.el('div',`font-weight:800;font-size:16px;color:${th().text};flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);ht.textContent=title;hd.appendChild(ht);
+    sheet.appendChild(hd);
+
+    const item=(ico,lbl,fn,{danger=false,sub=''}={})=>{
+      const b=UI.el('button',`width:100%;display:flex;align-items:center;gap:14px;padding:13px 12px;border:none;background:none;cursor:pointer;border-radius:14px;font-family:inherit;text-align:right;color:${danger?'#ef4444':th().text}`);
+      const ic=UI.el('span',`width:36px;height:36px;border-radius:12px;background:${danger?'#ef444418':th().card2};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0`);ic.textContent=ico;
+      const col=UI.el('div','flex:1;min-width:0');const l=UI.el('div','font-size:14px;font-weight:600');l.textContent=lbl;col.appendChild(l);
+      if(sub){const sb=UI.el('div',`font-size:11px;color:${th().text3};margin-top:2px`);sb.textContent=sub;col.appendChild(sb);}
+      b.appendChild(ic);b.appendChild(col);
+      b.addEventListener('click',async()=>{close();await fn();});
+      sheet.appendChild(b);
+    };
+
+    item('📌',p.pinned?'إلغاء التثبيت':'تثبيت في الأعلى',()=>_setPref(type,id,{pinned:p.pinned?null:Date.now()}));
+    item(p.muted?'🔔':'🔕',p.muted?'إلغاء الكتم':'كتم الإشعارات',()=>_setPref(type,id,{muted:p.muted?null:true}),{sub:p.muted?'':'لن تسمع صوت الرسائل الجديدة'});
+    item('🗄',p.archived?'إلغاء الأرشفة':'أرشفة',async()=>{
+      await _setPref(type,id,{archived:p.archived?null:Date.now()});
+      UI.toast(p.archived?'أُعيدت المحادثة للقائمة':'نُقلت إلى الأرشيف','success');
+      if(inChat&&!p.archived)go('home');
+    },{sub:p.archived?'':'تعود تلقائياً عند وصول رسالة جديدة (إلا إذا كانت مكتومة)'});
+    item('🙈','إخفاء المحادثة ومسحها من عندي',async()=>{
+      if(!await UI.confirmDialog('إخفاء المحادثة ومسح رسائلها من عندك فقط؟ لن تتأثر عند الطرف الآخر.',{confirmText:'إخفاء',danger:true}))return;
+      await _setPref(type,id,{hiddenAt:Date.now(),pinned:null,archived:null});
+      if(isDm&&targetUid)Chat.markRead(Chat.dmKey(S.meUid,targetUid),S.meUid);
+      if(!isDm)Chat.markGroupRead(id,S.meUid);
+      UI.toast('تم الإخفاء','success');
+      if(inChat)go('home');
+    });
+    if(isDm){
+      item('👤','عرض الملف الشخصي',()=>go('userProfile',id));
+      item(blocked?'✅':'🚫',blocked?'إلغاء الحظر':'حظر',async()=>{
+        if(!targetUid)return UI.toast('المستخدم غير موجود','error');
+        if(blocked){const r=await Auth.unblockUser(S.meUid,targetUid);if(r.error)UI.toast(r.error,'error');else UI.toast('تم إلغاء الحظر','success');return;}
+        if(!await UI.confirmDialog(`حظر ${id}؟ لن يستطيع مراسلتك أو إرسال طلب صداقة لك.`,{confirmText:'حظر',danger:true}))return;
+        const r=await Auth.blockUser(S.meUid,targetUid);
+        if(r.error)UI.toast(r.error,'error');else UI.toast('تم الحظر','success');
+      },{danger:!blocked});
+      item('⚠️','إبلاغ',()=>_openReportSheet(id),{danger:true});
+    }else if(g){
+      item('ℹ️','معلومات وإدارة المجموعة',()=>{if(!inChat)go('group',id);setTimeout(()=>{S.panel=true;const body=document.getElementById('group-body');if(body&&!document.getElementById('group-panel'))buildGroupPanel(body);},60);});
+      item('🚪','مغادرة المجموعة',async()=>{
+        if(!await UI.confirmDialog('هل تريد مغادرة المجموعة؟',{confirmText:'مغادرة',danger:true}))return;
+        const r=await Groups.leaveGroup(id);
+        if(r&&r.error)UI.toast(r.error,'error');else{UI.toast('غادرت المجموعة','info');go('home');}
+      },{danger:true});
+    }
+    ov.appendChild(sheet);APP.appendChild(ov);
+  }
+
+  function _openReportSheet(name){
+    const targetUid=_uidByName(name);if(!targetUid)return;
+    const ex=document.getElementById('report-sheet');if(ex)ex.remove();
+    const ov=UI.el('div','position:fixed;inset:0;z-index:991;display:flex;align-items:flex-end;justify-content:center');ov.id='report-sheet';
+    const bg=UI.el('div','position:absolute;inset:0;background:rgba(0,0,0,.55)');bg.addEventListener('click',()=>ov.remove());ov.appendChild(bg);
+    const sheet=UI.el('div',`background:${th().card};width:100%;max-width:500px;border-radius:24px 24px 0 0;padding:16px 12px 20px;position:relative;z-index:1;animation:slideUp .22s ease`);
+    const h=UI.el('div',`font-weight:800;font-size:15px;color:${th().text};padding:0 8px 8px`);h.textContent='سبب الإبلاغ عن '+name;sheet.appendChild(h);
+    (Auth.REPORT_REASONS||[]).forEach(r=>{
+      const b=UI.el('button',`width:100%;text-align:right;padding:13px 12px;border:none;background:none;cursor:pointer;border-radius:12px;font-family:inherit;font-size:14px;color:${th().text}`);b.textContent=r;
+      b.addEventListener('click',async()=>{ov.remove();const res=await Auth.reportUser(S.meUid,targetUid,r);if(res.error)UI.toast(res.error,'error');else UI.toast('تم إرسال البلاغ، شكراً لك','success');});
+      sheet.appendChild(b);
+    });
+    ov.appendChild(sheet);APP.appendChild(ov);
+  }
+
+  function buildBlockedBar(name){
+    const bar=UI.el('div',`background:${th().topbar};border-top:1px solid ${th().border};flex-shrink:0;padding:12px 16px;display:flex;align-items:center;gap:10px`);
+    bar.id='chat-input-wrap';
+    const t=UI.el('div',`flex:1;font-size:13px;color:${th().text2}`);t.textContent='🚫 قمت بحظر هذا المستخدم';
+    const b=UI.el('button','padding:8px 14px;border:none;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer');b.textContent='إلغاء الحظر';
+    b.addEventListener('click',async()=>{const u=_uidByName(name);if(!u)return;const r=await Auth.unblockUser(S.meUid,u);if(r.error)UI.toast(r.error,'error');});
+    bar.appendChild(t);bar.appendChild(b);return bar;
+  }
+
   /* ── تحويل رسالة إلى محادثة أخرى ───────────────────────── */
   const _FWD_STRIP=['id','sender','ts','status','replyTo','reactions','edited','editedAt','deleted','readBy','delivered','_pending','_tempId','pinned','forwarded'];
   function _openForwardPicker(m){
@@ -976,7 +1181,10 @@
       payload.forwarded=true;
       try{
         if(t.kind==='dm'){const tu=_uidByName(t.name);if(!tu)throw new Error('x');await Chat.sendDM(S.meUid,tu,payload);}
-        else await Chat.sendGroup(t.id,S.meUid,payload);
+        else{
+          if(m._enc&&!await UI.confirmDialog('هذه رسالة مشفّرة 🔒 — تحويلها إلى مجموعة سيجعلها غير مشفّرة. متابعة؟',{confirmText:'تحويل'})){busy=false;return;}
+          await Chat.sendGroup(t.id,S.meUid,payload);
+        }
         ov.remove();UI.toast('تم التحويل ✓','success');
       }catch(e){busy=false;UI.toast('تعذّر التحويل','error');}
     };
@@ -1350,6 +1558,20 @@
     } catch (err) {
       const pending = _pendingMsgs.get(tempId);
       if (!pending) return;
+      // رفض صلاحيات (مثلاً الطرف الآخر حظرك): لا فائدة من إعادة المحاولة
+      if (err && (err.code === 'PERMISSION_DENIED' || /permission[_ ]denied/i.test(err.message || ''))) {
+        _pendingMsgs.delete(tempId);
+        const el = document.querySelector(`[data-temp-id="${tempId}"]`); if (el) el.remove();
+        UI.toast('تعذّر الإرسال: لا يمكنك مراسلة هذه المحادثة (قد يكون الطرف الآخر حظرك)', 'error');
+        return;
+      }
+      if (err && err.code === 'E2E_NOT_READY') {
+        _pendingMsgs.delete(tempId);
+        const el = document.querySelector(`[data-temp-id="${tempId}"]`); if (el) el.remove();
+        UI.toast('🔒 التشفير غير جاهز على هذا الجهاز — لم تُرسل الرسالة', 'error');
+        _openE2ESetup(E2E.status());
+        return;
+      }
       pending.retries++;
       if (pending.retries <= maxRetries) {
         const delay = Math.min(2000 * pending.retries, 10000);
@@ -1394,21 +1616,46 @@
   }
 
   // v6: يرفع الميديا على Firebase Storage أولاً، بعدين يبعت الرسالة بـ url بدل data الكامل
+  async function _dmMode(uid){
+    const E=window.E2E; if(!E) return 'plain';
+    let pk=null; try{pk=await E.getPeerKey(uid,true);}catch(e){}
+    if(!pk) return 'plain';
+    return E.isReady()?'enc':'blocked';
+  }
   async function sendMedia(payload,type){
-    const loaderHide = UI.showOverlayLoader('جار رفع الملف...');
+    let loaderHide = null;
     try {
-      const ext = payload.type==='image' ? 'jpg' : payload.type==='video' ? 'mp4' : 'webm';
-      const path = FB.storagePath(payload.type+'s', S.meUid, ext);
-      const { url } = await FB.uploadFile(path, payload.data);
-      const finalPayload = { type: payload.type, url, storagePath: path };
+      const _t = type==='dm' ? (_uidByName(S.activeId)||S.activeId) : null;
+      const mode = type==='dm' ? await _dmMode(_t) : 'plain';
+      if (mode==='blocked') { UI.toast('🔒 التشفير غير جاهز على هذا الجهاز — لم يُرسل الملف','error'); _openE2ESetup(E2E.status()); return; }
+      loaderHide = UI.showOverlayLoader('جار رفع الملف...');
+      let finalPayload;
+      if (mode==='enc') {
+        // محادثة مشفّرة: الملف يُدمج داخل الرسالة المشفّرة (لا يُرفع نصاً صريحاً إلى Storage)
+        let data = payload.data;
+        if (payload.type==='image') {
+          data = await UI.compressDataUrl(data, 1280, 0.8);
+          if (data.length > 1500000) data = await UI.compressDataUrl(data, 900, 0.6);
+          if (data.length > 1500000) throw new Error('الصورة كبيرة جداً للمحادثات المشفّرة');
+        } else if (data.length > 5500000) {
+          throw new Error('الملف كبير جداً للمحادثات المشفّرة (الحد الأقصى ≈ 4MB)');
+        }
+        finalPayload = { type: payload.type, url: data };
+      } else {
+        const ext = payload.type==='image' ? 'jpg' : payload.type==='video' ? 'mp4' : 'webm';
+        const path = FB.storagePath(payload.type+'s', S.meUid, ext);
+        const { url } = await FB.uploadFile(path, payload.data);
+        finalPayload = { type: payload.type, url, storagePath: path };
+      }
       if (payload.duration) finalPayload.duration = payload.duration;
-      if(type==='dm'){const _t=_uidByName(S.activeId)||S.activeId;await Chat.sendDM(S.meUid,_t,finalPayload);}
+      if(type==='dm'){await Chat.sendDM(S.meUid,_t,finalPayload);}
       else{await Chat.sendGroup(S.activeId,S.meUid,finalPayload);}
       UI.playSound('send');
     } catch (err) {
-      UI.toast('فشل رفع الملف: '+(err.message||'تحقق من الاتصال'),'error');
+      if (err && err.code==='E2E_NOT_READY') { UI.toast('🔒 التشفير غير جاهز — لم يُرسل الملف','error'); _openE2ESetup(E2E.status()); }
+      else UI.toast('فشل رفع الملف: '+(err.message||'تحقق من الاتصال'),'error');
     } finally {
-      loaderHide();
+      if (loaderHide) loaderHide();
     }
   }
 
@@ -1561,9 +1808,11 @@
     const legalTerms=document.createElement('a');legalTerms.href='terms.html';legalTerms.target='_blank';legalTerms.rel='noopener noreferrer';legalTerms.textContent='الشروط والأحكام';legalTerms.style.cssText=`color:${th().text2};text-decoration:underline`;
     const legalPriv=document.createElement('a');legalPriv.href='privacy.html';legalPriv.target='_blank';legalPriv.rel='noopener noreferrer';legalPriv.textContent='سياسة الخصوصية';legalPriv.style.cssText=`color:${th().text2};text-decoration:underline`;
     legalRow.appendChild(legalTerms);legalRow.appendChild(legalPriv);inner.appendChild(legalRow);
+    // التشفير
+    const e2eBtn=UI.el('button',`width:100%;padding:11px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${th().text};font-family:inherit;font-size:14px;cursor:pointer;margin-bottom:10px`);e2eBtn.textContent='🔐 التشفير والنسخة الاحتياطية';e2eBtn.addEventListener('click',()=>_openE2EManage());inner.appendChild(e2eBtn);
     // Logout
     const logBtn=UI.el('button',`width:100%;padding:11px;border:1px solid #fecaca;border-radius:12px;background:${UI.isDark()?'#1e1e2e':'#fff'};color:#ef4444;font-family:inherit;font-size:14px;cursor:pointer;margin-bottom:10px`);logBtn.textContent='⏻ تسجيل الخروج';
-    logBtn.addEventListener('click',async()=>{Chat.goOffline(S.meUid);await Auth.logout();S.me=null;S.meUid=null;S.usersByName={};location.reload();});inner.appendChild(logBtn);
+    logBtn.addEventListener('click',async()=>{Chat.goOffline(S.meUid);try{E2E.reset();}catch(e){}await Auth.logout();S.me=null;S.meUid=null;S.usersByName={};location.reload();});inner.appendChild(logBtn);
     // Delete account
     const delBtn=UI.el('button',`width:100%;padding:11px;border:1px solid #fca5a5;border-radius:12px;background:${UI.isDark()?'#1e1e2e':'#fff'};color:#dc2626;font-family:inherit;font-size:13px;cursor:pointer`);delBtn.textContent='🗑 حذف الحساب نهائياً';
     delBtn.addEventListener('click',async()=>{
@@ -1901,6 +2150,166 @@
     if (res.gid) { _openGroupListener(res.gid); go('group', res.gid); }
   }
 
+
+  /* ═══════════════════════════════════════════════════════════
+     التشفير طرف-لطرف — الواجهة (المنطق في e2e.js)
+  ═══════════════════════════════════════════════════════════ */
+  const _EF = 'nbd_e2e_';
+  const _lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const _lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+  function _e2eBoot() {
+    if (!window.E2E || !S.meUid) return;
+    E2E.onReady(() => { _dmRedecryptAll(); _e2eRefreshLock(); });
+    E2E.init(S.meUid).then(st => {
+      _e2eRefreshLock();
+      setTimeout(() => _e2ePostInit(st), 2500);
+    }).catch(() => {});
+  }
+
+  async function _e2ePostInit(st) {
+    try {
+      if (st === 'unsupported') {
+        if (!_lsGet(_EF + 'unsup')) { _lsSet(_EF + 'unsup', '1'); UI.toast('متصفحك لا يدعم التشفير (يتطلب اتصالاً آمناً HTTPS)', 'warn'); }
+        return;
+      }
+      if (st === 'needs-restore' || st === 'conflict') { _openE2ESetup(st); return; }
+      if (st === 'error') { UI.toast('تعذّر تجهيز التشفير الآن — سيُعاد المحاولة لاحقاً', 'warn'); return; }
+      if (st === 'ready' && !_lsGet(_EF + 'bk_' + S.meUid)) {
+        const has = await E2E.hasBackup();
+        _lsSet(_EF + 'bk_' + S.meUid, '1');
+        if (has) return;
+        UI.toast('🔒 رسائلك الخاصة مشفّرة طرف-لطرف — احفظ نسخة احتياطية للمفتاح من: ملفي الشخصي ← التشفير', 'info');
+      }
+    } catch (e) {}
+  }
+
+  function _e2eSheet(title, build) {
+    const ex = document.getElementById('e2e-sheet'); if (ex) ex.remove();
+    const close = () => { const e = document.getElementById('e2e-sheet'); if (e) e.remove(); };
+    const ov = UI.el('div', 'position:fixed;inset:0;z-index:995;display:flex;align-items:flex-end;justify-content:center;direction:rtl'); ov.id = 'e2e-sheet';
+    const bg = UI.el('div', 'position:absolute;inset:0;background:rgba(0,0,0,.55)'); bg.addEventListener('click', close); ov.appendChild(bg);
+    const sheet = UI.el('div', `background:${th().card};width:100%;max-width:500px;border-radius:24px 24px 0 0;padding:14px 16px 22px;position:relative;z-index:1;max-height:88vh;overflow-y:auto;box-sizing:border-box;animation:slideUp .22s ease`);
+    sheet.appendChild(UI.el('div', `width:40px;height:4px;background:${th().border};border-radius:2px;margin:2px auto 12px`));
+    const h = UI.el('div', `font-weight:800;font-size:16px;color:${th().text};margin-bottom:8px`); h.textContent = title; sheet.appendChild(h);
+    build(sheet, close);
+    ov.appendChild(sheet); document.body.appendChild(ov);
+  }
+  const _e2eP = (sheet, text, color) => { const p = UI.el('div', `font-size:13px;line-height:1.7;color:${color || th().text2};margin-bottom:10px`); p.textContent = text; sheet.appendChild(p); return p; };
+  const _e2eInp = (sheet, ph) => { const i = UI.el('input', `width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;direction:ltr;text-align:left;box-sizing:border-box;margin-bottom:8px;font-family:inherit`); i.type = 'password'; i.placeholder = ph; i.autocomplete = 'off'; sheet.appendChild(i); return i; };
+  const _e2eBtn = (sheet, label, kind, fn) => {
+    const css = kind === 'primary' ? 'background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none'
+      : kind === 'danger' ? `background:${th().card2};color:#ef4444;border:1px solid #fecaca` : `background:${th().card2};color:${th().text};border:1px solid ${th().border}`;
+    const b = UI.el('button', `width:100%;padding:12px;border-radius:12px;${css};font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px`);
+    b.textContent = label;
+    b.addEventListener('click', async () => { if (b.disabled) return; b.disabled = true; const old = b.textContent; b.textContent = '⏳ لحظة...'; try { await fn(); } finally { b.disabled = false; b.textContent = old; } });
+    sheet.appendChild(b); return b;
+  };
+  const _e2eErr = e => {
+    const m = (e && e.message) || '';
+    if (m === 'wrong_passphrase') return 'كلمة السر غير صحيحة';
+    if (m === 'no_backup') return 'لا توجد نسخة احتياطية محفوظة لحسابك';
+    if (m === 'weak_passphrase') return 'كلمة السر لازم 8 أحرف على الأقل';
+    return 'حدث خطأ، حاول مجدداً';
+  };
+
+  // يظهر عندما لا يوجد مفتاح محلي صالح (جهاز جديد / مفتاح جديد من جهاز آخر)
+  function _openE2ESetup(st) {
+    if (!window.E2E) return;
+    if (st === 'ready') { _openE2EManage(); return; }
+    _e2eSheet('🔐 تفعيل التشفير على هذا الجهاز', (sheet, close) => {
+      if (st === 'unsupported') { _e2eP(sheet, 'هذا المتصفح لا يدعم التشفير. افتح التطبيق عبر متصفح حديث وباتصال آمن (HTTPS).'); return; }
+      _e2eP(sheet, st === 'conflict'
+        ? 'تم إنشاء مفتاح تشفير جديد لحسابك من جهاز آخر، لذلك رسائلك المشفّرة مقفلة هنا. أدخل كلمة سر النسخة الاحتياطية لفتحها.'
+        : 'حسابك مشفّر طرف-لطرف ومفتاحك غير موجود على هذا الجهاز. أدخل كلمة سر النسخة الاحتياطية لاستعادة رسائلك.');
+      const pw = _e2eInp(sheet, 'كلمة سر النسخة الاحتياطية');
+      _e2eBtn(sheet, 'استعادة المفتاح', 'primary', async () => {
+        if (!pw.value) { UI.toast('أدخل كلمة السر', 'warn'); return; }
+        try { await E2E.restoreBackup(pw.value); UI.toast('تمت الاستعادة ✓ 🔒', 'success'); close(); }
+        catch (e) { UI.toast(_e2eErr(e), 'error'); }
+      });
+      _e2eBtn(sheet, 'ليس لدي نسخة — إنشاء مفتاح جديد', 'danger', async () => {
+        if (!await UI.confirmDialog('سيُنشأ مفتاح جديد. الرسائل المشفّرة القديمة ستبقى مقفلة (لا يمكن قراءتها) ما لم تستعد المفتاح القديم. متابعة؟', { confirmText: 'إنشاء مفتاح جديد', danger: true })) return;
+        try { await E2E.createNewKey(); _lsSet(_EF + 'bk_' + S.meUid, ''); UI.toast('تم إنشاء مفتاح جديد 🔒 — احفظ نسخة احتياطية', 'success'); close(); setTimeout(() => _openE2EManage(), 300); }
+        catch (e) { UI.toast(_e2eErr(e), 'error'); }
+      });
+      _e2eBtn(sheet, 'لاحقاً', 'plain', async () => close());
+    });
+  }
+
+  // إعدادات التشفير (من الملف الشخصي)
+  function _openE2EManage() {
+    if (!window.E2E) return;
+    const st = E2E.status();
+    if (st !== 'ready') { _openE2ESetup(st); return; }
+    _e2eSheet('🔐 التشفير والنسخة الاحتياطية', (sheet, close) => {
+      _e2eP(sheet, '✅ رسائلك الخاصة (بين شخصين) مشفّرة طرف-لطرف: لا أحد يقرؤها غيرك أنت والطرف الآخر، حتى لو اطّلع أحد على قاعدة البيانات. المجموعات غير مشفّرة طرف-لطرف.', '#22c55e');
+      _e2eP(sheet, 'مفتاحك على هذا الجهاز فقط. النسخة الاحتياطية تحفظه مشفّراً بكلمة سر تختارها — إذا نسيتها لا يمكن استرجاعها.');
+      const p1 = _e2eInp(sheet, 'كلمة سر جديدة (8 أحرف أو أكثر)');
+      const p2 = _e2eInp(sheet, 'أعد كتابة كلمة السر');
+      _e2eBtn(sheet, '💾 حفظ / تحديث النسخة الاحتياطية', 'primary', async () => {
+        if (p1.value.length < 8) { UI.toast('كلمة السر لازم 8 أحرف على الأقل', 'warn'); return; }
+        if (p1.value !== p2.value) { UI.toast('كلمتا السر غير متطابقتين', 'warn'); return; }
+        try { await E2E.createBackup(p1.value); _lsSet(_EF + 'bk_' + S.meUid, '1'); UI.toast('تم حفظ النسخة الاحتياطية ✓', 'success'); close(); }
+        catch (e) { UI.toast(_e2eErr(e), 'error'); }
+      });
+      _e2eBtn(sheet, '🔄 إنشاء مفتاح جديد لهذا الحساب', 'danger', async () => {
+        if (!await UI.confirmDialog('سيُستبدل مفتاحك بمفتاح جديد. تبقى رسائلك القديمة مقروءة على هذا الجهاز، لكن الأجهزة الأخرى ستحتاج استعادة النسخة. أعد حفظ النسخة الاحتياطية بعد ذلك. متابعة؟', { confirmText: 'إنشاء', danger: true })) return;
+        try { await E2E.createNewKey(); UI.toast('تم إنشاء مفتاح جديد — أعد حفظ النسخة الاحتياطية', 'success'); }
+        catch (e) { UI.toast(_e2eErr(e), 'error'); }
+      });
+      _e2eBtn(sheet, 'إغلاق', 'plain', async () => close());
+    });
+  }
+
+  // رقم الأمان: قارنه مع صديقك (وجهاً لوجه أو مكالمة) للتأكد من عدم وجود وسيط
+  async function _openSafety(name) {
+    const uid = _uidByName(name) || name;
+    let pk = null; try { pk = window.E2E ? await E2E.getPeerKey(uid) : null; } catch (e) {}
+    _e2eSheet('🔒 تشفير المحادثة', async (sheet, close) => {
+      if (!window.E2E || !pk) {
+        _e2eP(sheet, `🔓 هذه المحادثة غير مشفّرة طرف-لطرف لأن ${name} لم يفتح التطبيق بعد بنسخة تدعم التشفير. ستتشفّر تلقائياً بمجرد تفعيله.`);
+        _e2eBtn(sheet, 'إغلاق', 'plain', async () => close()); return;
+      }
+      if (!E2E.isReady()) {
+        _e2eP(sheet, '⚠️ التشفير غير جاهز على هذا الجهاز — لن تُرسل رسائل لهذه المحادثة حتى تفعّله.', '#f59e0b');
+        _e2eBtn(sheet, 'تفعيل التشفير', 'primary', async () => { close(); _openE2ESetup(E2E.status()); });
+        _e2eBtn(sheet, 'إغلاق', 'plain', async () => close()); return;
+      }
+      _e2eP(sheet, `✅ رسائلك مع ${name} مشفّرة طرف-لطرف. للتأكد من أنك تكلّم الشخص الصحيح، قارن هذا الرقم مع الرقم الظاهر عنده — يجب أن يتطابقا تماماً:`, '#22c55e');
+      const num = UI.el('div', `font-family:monospace;font-size:20px;font-weight:800;letter-spacing:2px;text-align:center;direction:ltr;padding:16px 10px;border-radius:14px;background:${th().card2};border:1px solid ${th().border};color:${th().text};margin-bottom:12px;line-height:1.8`);
+      num.textContent = '...'; sheet.appendChild(num);
+      try { num.textContent = (await E2E.safetyNumber(uid)) || '—'; } catch (e) { num.textContent = '—'; }
+      _e2eBtn(sheet, '📋 نسخ الرقم', 'plain', async () => { try { await navigator.clipboard.writeText(num.textContent); UI.toast('تم النسخ ✓', 'success'); } catch (e) { UI.toast('تعذّر النسخ', 'error'); } });
+      _e2eBtn(sheet, 'إغلاق', 'plain', async () => close());
+    });
+  }
+
+  // أيقونة القفل في شريط المحادثة + تنبيه تغيّر مفتاح الطرف الآخر
+  const _peerChecking = new Set();
+  async function _e2eRefreshLock() {
+    const lk = document.getElementById('e2e-lock'); if (!lk || S.screen !== 'dm' || !window.E2E) return;
+    const uid = _uidByName(S.activeId) || S.activeId;
+    let pk = null; try { pk = await E2E.getPeerKey(uid); } catch (e) {}
+    const lk2 = document.getElementById('e2e-lock'); if (!lk2) return;
+    lk2.style.display = 'inline-block';
+    if (!pk) { lk2.textContent = '🔓'; lk2.style.opacity = '.55'; lk2.title = 'غير مشفّرة'; return; }
+    lk2.style.opacity = '1';
+    if (E2E.isReady()) { lk2.textContent = '🔒'; lk2.title = 'مشفّرة طرف-لطرف'; _e2eCheckPeerChange(uid, S.activeId); }
+    else { lk2.textContent = '⚠️'; lk2.title = 'التشفير غير جاهز'; }
+  }
+  async function _e2eCheckPeerChange(uid, name) {
+    if (_peerChecking.has(uid)) return; _peerChecking.add(uid);
+    try {
+      const kid = await E2E.peerFingerprint(uid); if (!kid) return;
+      let map = {}; try { map = JSON.parse(_lsGet(_EF + 'peers_' + S.meUid) || '{}'); } catch (e) {}
+      if (!map[uid]) { map[uid] = kid; _lsSet(_EF + 'peers_' + S.meUid, JSON.stringify(map)); return; }
+      if (map[uid] === kid) return;
+      map[uid] = kid; _lsSet(_EF + 'peers_' + S.meUid, JSON.stringify(map));
+      if (await UI.confirmDialog(`تغيّر مفتاح التشفير الخاص بـ ${name} (ربما غيّر جهازه أو أعاد تثبيت التطبيق). للتأكد قارن رقم الأمان معه.`, { confirmText: 'عرض رقم الأمان', cancelText: 'تجاهل' })) _openSafety(name);
+    } catch (e) {} finally { _peerChecking.delete(uid); }
+  }
+
   UI.applyTheme();
 
   // بدء الجلسة بعد التأكد من وجود مستخدم Firebase
@@ -1911,6 +2320,7 @@
     Chat.goOnline(S.meUid);
     UI.requestNotifPerm();
     startDataListeners();
+    _e2eBoot();
     // انتهاء الجلسة لاحقاً (حذف الحساب/إلغاء الصلاحية) → ارجع لشاشة الدخول
     FB.authOnChange(u => {
       if (!u && _sessionLive && S.me && S.screen !== 'auth') {

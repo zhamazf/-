@@ -33,7 +33,7 @@
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob: https:;
   font-src 'self' data:;
-  media-src 'self' blob: https:;
+  media-src 'self' blob: data: https:;
   worker-src 'self' blob:;
   frame-src https://nabda-chat.firebaseapp.com https://accounts.google.com;
   object-src 'none';
@@ -152,6 +152,7 @@
   var scripts = [
     'firebase.js',
     'auth.js',
+    'e2e.js',
     'chat.js',
     'friends.js',
     'groups.js',

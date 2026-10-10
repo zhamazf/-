@@ -325,6 +325,8 @@ window.Auth = (function () {
       deletes.push(FB.del(`users/${uid}`));
       deletes.push(FB.del(`usernames/${username}`));
       deletes.push(FB.del(`presence/${uid}`));
+      deletes.push(FB.del(`userKeys/${uid}`));
+      deletes.push(FB.del(`userData/${uid}`));
       deletes.push(FB.del(`friendRequests/${uid}`));
       // مسارات قديمة (للتوافق إن وُجدت)
       deletes.push(FB.del(`presence/${username}`));

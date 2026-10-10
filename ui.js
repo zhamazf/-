@@ -521,6 +521,27 @@ window.UI = (function () {
     });
   }
 
+  // يصغّر صورة dataURL (أقصى بُعد maxDim) ويعيدها JPEG؛ عند أي فشل يعيد الأصل
+  function compressDataUrl(dataUrl, maxDim = 1280, quality = 0.8) {
+    return new Promise(res => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let w = img.naturalWidth, h = img.naturalHeight;
+          const k = Math.min(1, maxDim / Math.max(w, h));
+          w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          res(c.toDataURL('image/jpeg', quality));
+        } catch (e) { res(dataUrl); }
+      };
+      img.onerror = () => res(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
   // يصغّر الصورة إلى مربع (قص من المنتصف) ويرجع dataURL (JPEG) خفيف للتخزين
   function imageToThumb(file, size = 320, quality = 0.82) {
     return new Promise((res, rej) => {
@@ -631,6 +652,7 @@ window.UI = (function () {
     el,
     spinner,
     fileToBase64,
+    compressDataUrl,
     imageToThumb,
     setChildren,
     confirmDialog,

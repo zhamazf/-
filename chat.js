@@ -83,16 +83,31 @@ window.Chat = (function () {
   ═══════════════════════════════════════════════════════════ */
   const MAX_MSG_LEN = 2000; // حد أقصى لطول الرسالة النصية
 
-  function sendDM(me, target, payload) {
-    if (!me || !target) return Promise.reject(new Error('missing_args'));
+  const _E2E = () => (typeof window !== 'undefined' && window.E2E) ? window.E2E : null;
+
+  async function sendDM(me, target, payload) {
+    if (!me || !target) throw new Error('missing_args');
     if (payload?.type === 'text') {
-      if (!payload.text?.trim()) return Promise.reject(new Error('empty_message'));
-      if (payload.text.length > MAX_MSG_LEN) return Promise.reject(new Error('message_too_long'));
+      if (!payload.text?.trim()) throw new Error('empty_message');
+      if (payload.text.length > MAX_MSG_LEN) throw new Error('message_too_long');
     }
     // replyTo: { id, text, sender, type } — اختياري
     const base = { sender: me, ts: Date.now(), status: 'sent' };
+    const key = dmKey(me, target);
+    const E = _E2E();
+    if (E) {
+      let peerHasKey = false;
+      try { peerHasKey = !!(await E.getPeerKey(target, true)); } catch (e) { peerHasKey = false; }
+      if (peerHasKey) {
+        // الطرف الآخر يملك مفتاحاً: ممنوع الإرسال كنص صريح (لا تخفيض صامت للتشفير)
+        if (!E.isReady()) { const er = new Error('e2e_not_ready'); er.code = 'E2E_NOT_READY'; throw er; }
+        const msg = await E.encryptMessage(key, target, base, payload);
+        if (msg) return FB.push(`dmMsgs/${key}`, msg);
+        const er = new Error('e2e_failed'); er.code = 'E2E_NOT_READY'; throw er;
+      }
+    }
     if (payload?.replyTo) base.replyTo = payload.replyTo;
-    return FB.push(`dmMsgs/${dmKey(me, target)}`, { ...base, ...payload });
+    return FB.push(`dmMsgs/${key}`, { ...base, ...payload });
   }
 
   function sendGroup(groupId, me, payload) {
@@ -164,6 +179,16 @@ window.Chat = (function () {
       if (msg.type !== 'text')  return { error: 'يمكن تعديل النصوص فقط' };
       if (msg.deleted)          return { error: 'الرسالة محذوفة' };
 
+      if (msg.e2e && chatPath.startsWith('dmMsgs/')) {
+        const E = _E2E();
+        const key = chatPath.split('/')[1];
+        const peer = key.split('_').find(u => u !== myUid);
+        if (!E || !E.isReady()) return { error: 'التشفير غير جاهز على هذا الجهاز' };
+        const e2e = await E.reencryptEdit(key, peer, Object.assign({ id: msgId }, msg), newText);
+        if (!e2e) return { error: 'تعذّر تشفير التعديل' };
+        await FB.upd(`${chatPath}/${msgId}`, { e2e, edited: true, editedAt: Date.now() });
+        return { ok: true };
+      }
       await FB.upd(`${chatPath}/${msgId}`, {
         text:         newText,
         edited:       true,
@@ -233,7 +258,7 @@ window.Chat = (function () {
         msgId:    msg.id,
         sender:   msg.sender,
         type:     msg.type || 'text',
-        text:     msg.type === 'text' ? (msg.text || '').slice(0, 120) : `[${msg.type}]`,
+        text:     msg._enc ? '🔒 رسالة مشفّرة' : (msg.type === 'text' ? (msg.text || '').slice(0, 120) : `[${msg.type}]`),
         ts:       msg.ts,
         pinnedAt: Date.now(),
         pinnedBy: pinnedByUid,
@@ -281,7 +306,7 @@ window.Chat = (function () {
     try {
       if (typeof FB.getPage !== 'function') return []; // firebase.js لا يدعم بعد
       const raw = await FB.getPage(path, oldestMsgId, PAGE_SIZE);
-      return parseMessages(raw);
+      return _decryptFor(path, parseMessages(raw));
     } catch { return []; }
   }
 
@@ -342,24 +367,39 @@ window.Chat = (function () {
   ═══════════════════════════════════════════════════════════ */
   const MSG_LIMIT = 60;
 
-  function _listen(path, cb) {
-    // Serve cache first — instant render while Firebase loads
-    _idbGet('msgs', path).then(cached => { if (cached?.length) cb(cached); });
+  // مسار DM → مفتاح المحادثة (للتشفير)، وإلا null
+  const _dmKeyOfPath = path => (path.startsWith('dmMsgs/') ? path.split('/')[1] : null);
+  async function _decryptFor(path, msgs) {
+    const k = _dmKeyOfPath(path), E = _E2E();
+    if (!k || !E || !msgs || !msgs.some(m => m && m.e2e)) return msgs;
+    try { return await E.decryptList(k, msgs); } catch (e) { return msgs; }
+  }
 
+  function _listen(path, cb) {
+    let seq = 0, lastRaw = null, dead = false;
+    const emit = raw => {
+      const my = ++seq;
+      _decryptFor(path, raw).then(out => { if (!dead && my === seq) cb(out); });
+    };
+    // Serve cache first — instant render while Firebase loads
+    _idbGet('msgs', path).then(cached => { if (cached?.length && !dead && lastRaw === null) emit(cached); });
+
+    const handle = raw => {
+      const msgs = parseMessages(raw);
+      lastRaw = msgs;
+      _idbSet('msgs', path, msgs);
+      emit(msgs);
+    };
+    let unsub;
     // Use FB.onLimit if available (limitToLast), else fall back to FB.on
-    if (typeof FB.onLimit === 'function') {
-      return FB.onLimit(path, MSG_LIMIT, raw => {
-        const msgs = parseMessages(raw);
-        _idbSet('msgs', path, msgs);
-        cb(msgs);
-      });
-    } else {
-      return FB.on(path, raw => {
-        const msgs = parseMessages(raw);
-        _idbSet('msgs', path, msgs);
-        cb(msgs);
-      });
-    }
+    if (typeof FB.onLimit === 'function') unsub = FB.onLimit(path, MSG_LIMIT, handle);
+    else unsub = FB.on(path, handle);
+
+    // عند جهوزية المفاتيح لاحقاً أعد فك تشفير آخر دفعة
+    let offReady = null;
+    const E = _E2E();
+    if (E && _dmKeyOfPath(path)) offReady = E.onReady(() => { if (lastRaw) emit(lastRaw); });
+    return () => { dead = true; try { unsub(); } catch (e) {} if (offReady) offReady(); };
   }
 
   function listenDM(me, target, cb) {

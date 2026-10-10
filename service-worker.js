@@ -23,7 +23,7 @@
 // ⚠️ ثابت عمداً: كان سابقاً 'v8-' + Date.now() فيتغير اسم الكاش كل ما يصحى الـ worker
 // فيفتح كاش فاضي جديد ولا يُنظَّف القديم. غيّر الرقم يدوياً عند تغيير هيكلة الكاش فقط
 // (ملفات JS/CSS/HTML تُجلب من الشبكة أولاً فلا تحتاج رفع الرقم مع كل نشر).
-const _BUILD = 'v10';
+const _BUILD = 'v11';
 
 const CACHE_STATIC   = `nabda-static-${_BUILD}`;
 const CACHE_DYNAMIC  = `nabda-dynamic-${_BUILD}`;
@@ -95,6 +95,7 @@ const STATIC_FILES = [
   'groups.js',
   'stories.js',
   'ui.js',
+  'e2e.js',
   'app.js',
   'privacy.html',
   'terms.html',
