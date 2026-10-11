@@ -70,7 +70,8 @@ window.Auth = (function () {
       'auth/credential-already-in-use':  'هذا البريد مرتبط بحساب آخر',
       'auth/popup-blocked':              'تم حظر النافذة المنبثقة، افتح الإعدادات وأتح النوافذ المنبثقة',
       'auth/popup-closed-by-user':       'أغلقت نافذة تسجيل الدخول قبل الاكتمال',
-      'auth/timeout':                    'انتهت مدة الطلب — تحقق من الاتصال وحاول مجدداً',
+      'auth/timeout':                    'تعذّر الوصول لخدمة تسجيل الدخول (الشبكة بطيئة أو محجوبة) — بدّل بين الواي فاي وبيانات الجوال وحاول مجدداً',
+      'db/timeout':                      'تم التحقق من حسابك لكن قاعدة البيانات لا تستجيب (الشبكة بطيئة أو تحجب Firebase) — بدّل الشبكة وحاول مجدداً',
       'auth/quota-exceeded':             'تجاوزت الحد المسموح، حاول لاحقاً',
       'auth/app-deleted':                'خطأ في إعداد التطبيق، تواصل مع الدعم',
       'auth/expired-action-code':        'رمز التحقق منتهي الصلاحية، اطلب رمزاً جديداً',
@@ -218,11 +219,13 @@ window.Auth = (function () {
     if (throttle.locked) return { error: throttle.error };
 
     try {
-      const cred = await _withTimeout(FB.authLogin(email, password), 30000);
+      const cred = await _withTimeout(FB.authLogin(email, password), 45000);
       const uid  = cred.user.uid;
 
       // جلب البروفايل من users/{uid} (بمهلة حتى لا يعلق التحميل للأبد)
-      const profile = await _withTimeout(FB.getStrict(`users/${uid}`), 20000);
+      let profile;
+      try { profile = await _withTimeout(FB.getStrict(`users/${uid}`), 45000); }
+      catch (pe) { throw (pe && pe.code === 'auth/timeout') ? { code: 'db/timeout' } : pe; }
       if (!profile) {
         // لا نترك المستخدم مسجّلاً بدون بروفايل (حالة نصف-دخول)
         try { await FB.authSignOut(); } catch {}
@@ -235,9 +238,9 @@ window.Auth = (function () {
 
     } catch (e) {
       // انقطاع/بطء شبكة ليس خطأ كلمة مرور → لا يُحتسب كمحاولة فاشلة
-      if (e && e.code === 'auth/timeout') {
+      if (e && (e.code === 'auth/timeout' || e.code === 'db/timeout')) {
         try { await FB.authSignOut(); } catch {}
-        return { error: friendlyError('auth/timeout') };
+        return { error: friendlyError(e.code) };
       }
       _recordFailedLogin(email);
       return { error: friendlyError(e && e.code) };
