@@ -184,7 +184,14 @@
     },
     "typing": {
       ".read": "auth !== null",
-      ".write": "auth !== null"
+      "$type": {
+        "$chat": {
+          ".write": "auth !== null && $type === 'group' && root.child('groups').child($chat).child('admin').val() === auth.uid",
+          "$name": {
+            ".write": "auth !== null && root.child('usernames').child($name).val() === auth.uid"
+          }
+        }
+      }
     },
     "stories": {
       ".read": "auth !== null",
