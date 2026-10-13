@@ -76,7 +76,19 @@
     "dmMsgs": {
       "$dmKey": {
         ".read": "auth !== null && $dmKey.contains(auth.uid)",
-        ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists()"
+        ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists()",
+        "$msgId": {
+          ".validate": "newData.hasChildren(['sender','ts']) && (data.exists() || newData.child('sender').val() === auth.uid)",
+          "$f": {
+            ".validate": "!newData.isString() || (($f === 'url' || $f === 'data') ? newData.val().length < 9000000 : newData.val().length < 5000)",
+            "$g": {
+              ".validate": "!newData.isString() || newData.val().length < 12000000",
+              "$h": {
+                ".validate": "!newData.isString() || newData.val().length < 12000000"
+              }
+            }
+          }
+        }
       }
     },
     "groups": {
@@ -115,7 +127,19 @@
     "groupMsgs": {
       "$gid": {
         ".read": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
-        ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()"
+        ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
+        "$msgId": {
+          ".validate": "newData.hasChildren(['sender','ts']) && (data.exists() || newData.child('sender').val() === auth.uid)",
+          "$f": {
+            ".validate": "!newData.isString() || (($f === 'url' || $f === 'data') ? newData.val().length < 9000000 : newData.val().length < 5000)",
+            "$g": {
+              ".validate": "!newData.isString() || newData.val().length < 12000000",
+              "$h": {
+                ".validate": "!newData.isString() || newData.val().length < 12000000"
+              }
+            }
+          }
+        }
       }
     },
     "groupPolls": {
@@ -165,7 +189,11 @@
       "$uid": {
         ".read": "$uid === auth.uid",
         "$nid": {
-          ".write": "auth !== null && ($uid === auth.uid || (!data.exists() && (newData.child('fromUid').val() === auth.uid || newData.child('byUid').val() === auth.uid)))"
+          ".write": "auth !== null && ($uid === auth.uid || (!data.exists() && (newData.child('fromUid').val() === auth.uid || newData.child('byUid').val() === auth.uid)))",
+          ".validate": "newData.hasChildren(['type','ts']) && newData.child('type').isString() && newData.child('type').val().length < 40",
+          "$f": {
+            ".validate": "!newData.isString() || newData.val().length < 500"
+          }
         }
       }
     },
@@ -176,7 +204,7 @@
     },
     "readReceipts": {
       "$chatKey": {
-        ".read": "auth !== null",
+        ".read": "auth !== null && ($chatKey.contains(auth.uid) || ($chatKey.beginsWith('group_') && root.child('groups').child($chatKey.replace('group_', '')).child('members').child(auth.uid).exists()))",
         "$uid": {
           ".write": "$uid === auth.uid"
         }

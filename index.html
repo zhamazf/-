@@ -13,7 +13,8 @@
   ═══════════════════════════════════════════════════════════════
   Content Security Policy
   - default-src 'self'           → كل شيء من نفس الدومين فقط
-  - script-src                   → السماح لـ gstatic (Firebase CDN) + inline scripts (nonce مطلوب)
+  - script-src                   → gstatic (Firebase CDN) + 'unsafe-inline' (لوجود سكربتات inline صغيرة؛
+                                   الحماية من XSS تعتمد على عدم استخدام innerHTML مع بيانات المستخدم)
   - connect-src                  → Firebase Realtime DB + Auth endpoints
   - style-src 'unsafe-inline'    → مطلوب للـ inline styles (شاشة التحميل)
   - img-src data: blob:          → للصور المحلية

@@ -52,7 +52,7 @@ window.Auth = (function () {
       // تسجيل
       'auth/email-already-in-use':       'البريد الإلكتروني مستخدم بالفعل',
       'auth/invalid-email':              'البريد الإلكتروني غير صحيح',
-      'auth/weak-password':              'كلمة المرور قصيرة جداً (6 أحرف على الأقل)',
+      'auth/weak-password':              'كلمة المرور قصيرة جداً (8 أحرف على الأقل)',
       'auth/operation-not-allowed':      'هذا النوع من تسجيل الدخول غير مفعّل',
       // دخول
       'auth/user-not-found':             'البريد الإلكتروني غير موجود',

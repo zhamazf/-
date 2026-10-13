@@ -75,10 +75,9 @@ window.E2E = (function () {
         return (v === null || v === undefined) ? ls.get(k) : v;
       },
       set: async (k, v) => {
-        let ok = false;
-        try { await tx('readwrite', s => s.put(v, k)); ok = true; } catch (e) {}
-        try { ls.set(k, v); ok = true; } catch (e) {}
-        if (!ok) throw new Error('storage_unavailable');
+        // localStorage فقط إن فشل IndexedDB (المفتاح الخاص لا يُنسخ لـ localStorage عادةً)
+        try { await tx('readwrite', s => s.put(v, k)); ls.del(k); return; } catch (e) {}
+        try { ls.set(k, v); } catch (e) { throw new Error('storage_unavailable'); }
       },
       del: async k => { try { await tx('readwrite', s => s.delete(k)); } catch (e) {} ls.del(k); },
     };
