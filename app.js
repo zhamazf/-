@@ -1569,7 +1569,6 @@
         _pendingMsgs.delete(tempId);
         const el = document.querySelector(`[data-temp-id="${tempId}"]`); if (el) el.remove();
         UI.toast('🔒 التشفير غير جاهز على هذا الجهاز — لم تُرسل الرسالة', 'error');
-        _openE2ESetup(E2E.status());
         return;
       }
       pending.retries++;
@@ -1627,7 +1626,7 @@
     try {
       const _t = type==='dm' ? (_uidByName(S.activeId)||S.activeId) : null;
       const mode = type==='dm' ? await _dmMode(_t) : 'plain';
-      if (mode==='blocked') { UI.toast('🔒 التشفير غير جاهز على هذا الجهاز — لم يُرسل الملف','error'); _openE2ESetup(E2E.status()); return; }
+      if (mode==='blocked') { UI.toast('🔒 التشفير غير جاهز على هذا الجهاز — لم يُرسل الملف','error');  return; }
       loaderHide = UI.showOverlayLoader('جار رفع الملف...');
       let finalPayload;
       if (mode==='enc') {
@@ -1661,7 +1660,7 @@
       else{await Chat.sendGroup(S.activeId,S.meUid,finalPayload);}
       UI.playSound('send');
     } catch (err) {
-      if (err && err.code==='E2E_NOT_READY') { UI.toast('🔒 التشفير غير جاهز — لم يُرسل الملف','error'); _openE2ESetup(E2E.status()); }
+      if (err && err.code==='E2E_NOT_READY') { UI.toast('🔒 التشفير غير جاهز — لم يُرسل الملف','error');  }
       else UI.toast('فشل رفع الملف: '+(err.message||'تحقق من الاتصال'),'error');
     } finally {
       if (loaderHide) loaderHide();
@@ -2172,25 +2171,12 @@
     E2E.onReady(() => { _dmRedecryptAll(); _e2eRefreshLock(); });
     E2E.init(S.meUid).then(st => {
       _e2eRefreshLock();
-      setTimeout(() => _e2ePostInit(st), 2500);
-    }).catch(() => {});
-  }
-
-  async function _e2ePostInit(st) {
-    try {
       if (st === 'unsupported') {
         if (!_lsGet(_EF + 'unsup')) { _lsSet(_EF + 'unsup', '1'); UI.toast('متصفحك لا يدعم التشفير (يتطلب اتصالاً آمناً HTTPS)', 'warn'); }
-        return;
+      } else if (st === 'error') {
+        setTimeout(() => UI.toast('🔒 تعذّر تجهيز التشفير: ' + _e2eErr(E2E.lastError()), 'error'), 2500);
       }
-      if (st === 'needs-restore' || st === 'conflict') { _openE2ESetup(st); return; }
-      if (st === 'error') { UI.toast('🔒 تعذّر تجهيز التشفير: ' + _e2eErr(E2E.lastError()), 'error'); return; }
-      if (st === 'ready' && !_lsGet(_EF + 'bk_' + S.meUid)) {
-        const has = await E2E.hasBackup();
-        _lsSet(_EF + 'bk_' + S.meUid, '1');
-        if (has) return;
-        UI.toast('🔒 رسائلك الخاصة مشفّرة طرف-لطرف — احفظ نسخة احتياطية للمفتاح من: ملفي الشخصي ← التشفير', 'info');
-      }
-    } catch (e) {}
+    }).catch(() => {});
   }
 
   function _e2eSheet(title, build) {
@@ -2205,7 +2191,6 @@
     ov.appendChild(sheet); document.body.appendChild(ov);
   }
   const _e2eP = (sheet, text, color) => { const p = UI.el('div', `font-size:13px;line-height:1.7;color:${color || th().text2};margin-bottom:10px`); p.textContent = text; sheet.appendChild(p); return p; };
-  const _e2eInp = (sheet, ph) => { const i = UI.el('input', `width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;direction:ltr;text-align:left;box-sizing:border-box;margin-bottom:8px;font-family:inherit`); i.type = 'password'; i.placeholder = ph; i.autocomplete = 'off'; sheet.appendChild(i); return i; };
   const _e2eBtn = (sheet, label, kind, fn) => {
     const css = kind === 'primary' ? 'background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none'
       : kind === 'danger' ? `background:${th().card2};color:#ef4444;border:1px solid #fecaca` : `background:${th().card2};color:${th().text};border:1px solid ${th().border}`;
@@ -2216,57 +2201,25 @@
   };
   const _e2eErr = e => {
     const m = (e && e.message) || '';
-    if (m === 'wrong_passphrase') return 'كلمة السر غير صحيحة';
-    if (m === 'no_backup') return 'لا توجد نسخة احتياطية محفوظة لحسابك';
-    if (m === 'weak_passphrase') return 'كلمة السر لازم 8 أحرف على الأقل';
     if (/permission|PERMISSION/.test(m + (e && e.code || ''))) return 'قواعد Firebase غير محدّثة — الصق ملف القواعد الجديد في Firebase Console ثم Publish';
     if (m === 'storage_unavailable') return 'المتصفح يمنع التخزين المحلي — افتح التطبيق من Chrome مباشرة';
     return 'حدث خطأ: ' + (m || (e && e.code) || 'غير معروف');
   };
 
-  // يظهر عندما لا يوجد مفتاح محلي صالح (جهاز جديد / مفتاح جديد من جهاز آخر)
-  function _openE2ESetup(st) {
-    if (!window.E2E) return;
-    if (st === 'ready') { _openE2EManage(); return; }
-    _e2eSheet('🔐 تفعيل التشفير على هذا الجهاز', (sheet, close) => {
-      if (st === 'unsupported') { _e2eP(sheet, 'هذا المتصفح لا يدعم التشفير. افتح التطبيق عبر متصفح حديث وباتصال آمن (HTTPS).'); return; }
-      _e2eP(sheet, st === 'conflict'
-        ? 'تم إنشاء مفتاح تشفير جديد لحسابك من جهاز آخر، لذلك رسائلك المشفّرة مقفلة هنا. أدخل كلمة سر النسخة الاحتياطية لفتحها.'
-        : 'حسابك مشفّر طرف-لطرف ومفتاحك غير موجود على هذا الجهاز. أدخل كلمة سر النسخة الاحتياطية لاستعادة رسائلك.');
-      const pw = _e2eInp(sheet, 'كلمة سر النسخة الاحتياطية');
-      _e2eBtn(sheet, 'استعادة المفتاح', 'primary', async () => {
-        if (!pw.value) { UI.toast('أدخل كلمة السر', 'warn'); return; }
-        try { await E2E.restoreBackup(pw.value); UI.toast('تمت الاستعادة ✓ 🔒', 'success'); close(); }
-        catch (e) { UI.toast(_e2eErr(e), 'error'); }
-      });
-      _e2eBtn(sheet, 'ليس لدي نسخة — إنشاء مفتاح جديد', 'danger', async () => {
-        if (!await UI.confirmDialog('سيُنشأ مفتاح جديد. الرسائل المشفّرة القديمة ستبقى مقفلة (لا يمكن قراءتها) ما لم تستعد المفتاح القديم. متابعة؟', { confirmText: 'إنشاء مفتاح جديد', danger: true })) return;
-        try { await E2E.createNewKey(); _lsSet(_EF + 'bk_' + S.meUid, ''); UI.toast('تم إنشاء مفتاح جديد 🔒 — احفظ نسخة احتياطية', 'success'); close(); setTimeout(() => _openE2EManage(), 300); }
-        catch (e) { UI.toast(_e2eErr(e), 'error'); }
-      });
-      _e2eBtn(sheet, 'لاحقاً', 'plain', async () => close());
-    });
-  }
-
-  // إعدادات التشفير (من الملف الشخصي)
+  // معلومات التشفير (من الملف الشخصي) — لا يحتاج المستخدم لأي إعداد
   function _openE2EManage() {
     if (!window.E2E) return;
-    const st = E2E.status();
-    if (st !== 'ready') { _openE2ESetup(st); return; }
-    _e2eSheet('🔐 التشفير والنسخة الاحتياطية', (sheet, close) => {
-      _e2eP(sheet, '✅ رسائلك الخاصة (بين شخصين) مشفّرة طرف-لطرف: لا أحد يقرؤها غيرك أنت والطرف الآخر، حتى لو اطّلع أحد على قاعدة البيانات. المجموعات غير مشفّرة طرف-لطرف.', '#22c55e');
-      _e2eP(sheet, 'مفتاحك على هذا الجهاز فقط. النسخة الاحتياطية تحفظه مشفّراً بكلمة سر تختارها — إذا نسيتها لا يمكن استرجاعها.');
-      const p1 = _e2eInp(sheet, 'كلمة سر جديدة (8 أحرف أو أكثر)');
-      const p2 = _e2eInp(sheet, 'أعد كتابة كلمة السر');
-      _e2eBtn(sheet, '💾 حفظ / تحديث النسخة الاحتياطية', 'primary', async () => {
-        if (p1.value.length < 8) { UI.toast('كلمة السر لازم 8 أحرف على الأقل', 'warn'); return; }
-        if (p1.value !== p2.value) { UI.toast('كلمتا السر غير متطابقتين', 'warn'); return; }
-        try { await E2E.createBackup(p1.value); _lsSet(_EF + 'bk_' + S.meUid, '1'); UI.toast('تم حفظ النسخة الاحتياطية ✓', 'success'); close(); }
-        catch (e) { UI.toast(_e2eErr(e), 'error'); }
-      });
-      _e2eBtn(sheet, '🔄 إنشاء مفتاح جديد لهذا الحساب', 'danger', async () => {
-        if (!await UI.confirmDialog('سيُستبدل مفتاحك بمفتاح جديد. تبقى رسائلك القديمة مقروءة على هذا الجهاز، لكن الأجهزة الأخرى ستحتاج استعادة النسخة. أعد حفظ النسخة الاحتياطية بعد ذلك. متابعة؟', { confirmText: 'إنشاء', danger: true })) return;
-        try { await E2E.createNewKey(); UI.toast('تم إنشاء مفتاح جديد — أعد حفظ النسخة الاحتياطية', 'success'); }
+    _e2eSheet('🔐 التشفير', (sheet, close) => {
+      const st = E2E.status();
+      if (st === 'unsupported') { _e2eP(sheet, 'هذا المتصفح لا يدعم التشفير. افتح التطبيق عبر متصفح حديث وباتصال آمن (HTTPS).'); _e2eBtn(sheet, 'إغلاق', 'plain', async () => close()); return; }
+      if (st !== 'ready') { _e2eP(sheet, '⚠️ تعذّر تجهيز التشفير: ' + _e2eErr(E2E.lastError()), '#f59e0b'); _e2eBtn(sheet, 'إغلاق', 'plain', async () => close()); return; }
+      _e2eP(sheet, '✅ رسائلك الخاصة (بين شخصين) مشفّرة طرف-لطرف تلقائياً، مثل واتساب: لا أحد يقرؤها غيرك أنت والطرف الآخر، حتى إدارة التطبيق وقاعدة البيانات. لا تحتاج أي إعداد أو نسخة احتياطية.', '#22c55e');
+      _e2eP(sheet, 'ملاحظة: مفتاحك محفوظ على هذا الجهاز. إذا مسحت بيانات المتصفح/التطبيق أو انتقلت لجهاز جديد، تبدأ فيه المحادثات برسائل جديدة (الرسائل القديمة المشفّرة لا تظهر على الجهاز الجديد). المجموعات غير مشفّرة طرف-لطرف.');
+      const cnt = _e2eP(sheet, 'الأجهزة المرتبطة بحسابك: ...');
+      E2E.myDevices().then(d => { cnt.textContent = 'الأجهزة المرتبطة بحسابك: ' + d.length; }).catch(() => { cnt.textContent = ''; });
+      _e2eBtn(sheet, '🗑 إزالة الأجهزة الأخرى (إن ضاع جهاز)', 'danger', async () => {
+        if (!await UI.confirmDialog('ستُزال كل أجهزتك الأخرى من التشفير، ولن تصلها رسائل جديدة. متابعة؟', { confirmText: 'إزالة', danger: true })) return;
+        try { const n = await E2E.removeOtherDevices(); UI.toast(n ? `أُزيل ${n} جهاز` : 'لا توجد أجهزة أخرى', 'success'); cnt.textContent = 'الأجهزة المرتبطة بحسابك: 1'; }
         catch (e) { UI.toast(_e2eErr(e), 'error'); }
       });
       _e2eBtn(sheet, 'إغلاق', 'plain', async () => close());
@@ -2279,25 +2232,24 @@
     let pk = null; try { pk = window.E2E ? await E2E.getPeerKey(uid) : null; } catch (e) {}
     _e2eSheet('🔒 تشفير المحادثة', async (sheet, close) => {
       if (!window.E2E || !pk) {
-        _e2eP(sheet, `🔓 هذه المحادثة غير مشفّرة طرف-لطرف لأن ${name} لم يفتح التطبيق بعد بنسخة تدعم التشفير. ستتشفّر تلقائياً بمجرد تفعيله.`);
+        _e2eP(sheet, `🔓 هذه المحادثة غير مشفّرة طرف-لطرف لأن ${name} لم يفتح التطبيق بعد بنسخة تدعم التشفير. ستتشفّر تلقائياً بمجرد فتحه للتطبيق.`);
         _e2eBtn(sheet, 'إغلاق', 'plain', async () => close()); return;
       }
       if (!E2E.isReady()) {
-        _e2eP(sheet, '⚠️ التشفير غير جاهز على هذا الجهاز — لن تُرسل رسائل لهذه المحادثة حتى تفعّله.', '#f59e0b');
-        _e2eBtn(sheet, 'تفعيل التشفير', 'primary', async () => { close(); _openE2ESetup(E2E.status()); });
+        _e2eP(sheet, '⚠️ التشفير غير جاهز على هذا الجهاز — لن تُرسل رسائل لهذه المحادثة حتى يجهز. ' + _e2eErr(E2E.lastError()), '#f59e0b');
         _e2eBtn(sheet, 'إغلاق', 'plain', async () => close()); return;
       }
       _e2eP(sheet, `✅ رسائلك مع ${name} مشفّرة طرف-لطرف. للتأكد من أنك تكلّم الشخص الصحيح، قارن هذا الرقم مع الرقم الظاهر عنده — يجب أن يتطابقا تماماً:`, '#22c55e');
       const num = UI.el('div', `font-family:monospace;font-size:20px;font-weight:800;letter-spacing:2px;text-align:center;direction:ltr;padding:16px 10px;border-radius:14px;background:${th().card2};border:1px solid ${th().border};color:${th().text};margin-bottom:12px;line-height:1.8`);
       num.textContent = '...'; sheet.appendChild(num);
       try { num.textContent = (await E2E.safetyNumber(uid)) || '—'; } catch (e) { num.textContent = '—'; }
+      _e2eP(sheet, 'ملاحظة: الرقم يتغيّر إذا أضاف أحدكما جهازاً جديداً.');
       _e2eBtn(sheet, '📋 نسخ الرقم', 'plain', async () => { try { await navigator.clipboard.writeText(num.textContent); UI.toast('تم النسخ ✓', 'success'); } catch (e) { UI.toast('تعذّر النسخ', 'error'); } });
       _e2eBtn(sheet, 'إغلاق', 'plain', async () => close());
     });
   }
 
-  // أيقونة القفل في شريط المحادثة + تنبيه تغيّر مفتاح الطرف الآخر
-  const _peerChecking = new Set();
+  // أيقونة القفل في شريط المحادثة
   async function _e2eRefreshLock() {
     const lk = document.getElementById('e2e-lock'); if (!lk || S.screen !== 'dm' || !window.E2E) return;
     const uid = _uidByName(S.activeId) || S.activeId;
@@ -2306,19 +2258,8 @@
     lk2.style.display = 'inline-block';
     if (!pk) { lk2.textContent = '🔓'; lk2.style.opacity = '.55'; lk2.title = 'غير مشفّرة'; return; }
     lk2.style.opacity = '1';
-    if (E2E.isReady()) { lk2.textContent = '🔒'; lk2.title = 'مشفّرة طرف-لطرف'; _e2eCheckPeerChange(uid, S.activeId); }
+    if (E2E.isReady()) { lk2.textContent = '🔒'; lk2.title = 'مشفّرة طرف-لطرف'; }
     else { lk2.textContent = '⚠️'; lk2.title = 'التشفير غير جاهز'; }
-  }
-  async function _e2eCheckPeerChange(uid, name) {
-    if (_peerChecking.has(uid)) return; _peerChecking.add(uid);
-    try {
-      const kid = await E2E.peerFingerprint(uid); if (!kid) return;
-      let map = {}; try { map = JSON.parse(_lsGet(_EF + 'peers_' + S.meUid) || '{}'); } catch (e) {}
-      if (!map[uid]) { map[uid] = kid; _lsSet(_EF + 'peers_' + S.meUid, JSON.stringify(map)); return; }
-      if (map[uid] === kid) return;
-      map[uid] = kid; _lsSet(_EF + 'peers_' + S.meUid, JSON.stringify(map));
-      if (await UI.confirmDialog(`تغيّر مفتاح التشفير الخاص بـ ${name} (ربما غيّر جهازه أو أعاد تثبيت التطبيق). للتأكد قارن رقم الأمان معه.`, { confirmText: 'عرض رقم الأمان', cancelText: 'تجاهل' })) _openSafety(name);
-    } catch (e) {} finally { _peerChecking.delete(uid); }
   }
 
   UI.applyTheme();

@@ -224,6 +224,31 @@
           ".validate": false
         }
       }
+    },
+    "userDevices": {
+      "$uid": {
+        ".read": "auth !== null",
+        "$dev": {
+          ".write": "auth !== null && $uid === auth.uid",
+          ".validate": "$dev.length >= 8 && $dev.length <= 32 && newData.hasChildren(['pub','kid','v','ts'])",
+          "pub": {
+            ".validate": "newData.isString() && newData.val().length > 20 && newData.val().length < 400"
+          },
+          "kid": {
+            ".validate": "newData.isString() && newData.val().length === 32"
+          },
+          "v": {
+            ".validate": "newData.isNumber()"
+          },
+          "ts": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        ".write": "auth !== null && $uid === auth.uid && !newData.exists()"
+      }
     }
   }
 }

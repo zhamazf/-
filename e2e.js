@@ -1,12 +1,11 @@
 /**
  * e2e.js — تشفير طرف-لطرف للمحادثات الخاصة (DM)
  *
- * التقنية (WebCrypto فقط، بدون مكتبات):
- *  - لكل حساب زوج مفاتيح ECDH P-256؛ المفتاح الخاص يبقى على جهازك (IndexedDB)
- *    والعام يُنشر في userKeys/{uid}.
- *  - مفتاح المحادثة = HKDF(ECDH(مفتاحي الخاص، مفتاح الطرف الآخر العام)).
- *  - الرسالة تُشفَّر بـ AES-256-GCM، وتُربَط (AAD) بمفتاح المحادثة ومعرّف المرسل.
- *  - نسخة احتياطية اختيارية للمفتاح الخاص مشفّرة بكلمة سر (PBKDF2) في userData/{uid}/e2eBackup (خاص بك).
+ * التقنية (WebCrypto فقط، بدون مكتبات) — مثل واتساب: لا يحتاج المستخدم لأي إعداد أو نسخة احتياطية:
+ *  - كل جهاز يولّد مفتاحه تلقائياً (ECDH P-256) وينشر العام في userDevices/{uid}/{deviceId}.
+ *  - الرسالة تُشفَّر بمفتاح عشوائي AES-256-GCM (مربوط AAD بالمحادثة والمرسل)،
+ *    ويُغلَّف هذا المفتاح لكل جهاز عند الطرفين عبر ECDH+HKDF.
+ *  - جهاز جديد يستلم الرسائل الجديدة فقط.
  *
  * ما لا يُشفَّر: type، sender، ts، status، التفاعلات، معرّف الرد.
  * المجموعات غير مشفّرة طرف-لطرف (تحتاج إدارة مفاتيح جماعية).
@@ -87,233 +86,196 @@ window.E2E = (function () {
 
   /* ═══════════════════════════════════════════════════════════
      المصنع: create({ FB, store })  — يسمح بالاختبار بمخزن/FB وهميين
+
+     النموذج (مثل واتساب متعدد الأجهزة، بدون أي إعداد من المستخدم):
+       - كل جهاز يولّد هويته (زوج مفاتيح ECDH) تلقائياً وينشر المفتاح العام في
+         userDevices/{uid}/{deviceId}. المفتاح الخاص لا يغادر الجهاز.
+       - الرسالة تُشفَّر مرة واحدة بمفتاح عشوائي (AES-GCM)، ثم يُغلَّف هذا المفتاح
+         لكل جهاز عند الطرفين (أجهزة المرسل أيضاً) عبر ECDH+HKDF.
+       - جهاز جديد يبدأ برسائل جديدة فقط (الرسائل القديمة لا تُفتح عليه).
   ═══════════════════════════════════════════════════════════ */
+  const MAX_DEVICES = 8;
+
   function create(deps) {
     const FB = deps.FB;
     const store = deps.store;
 
     let _uid = null;
-    let _ring = [];            // [{ kid, priv:CryptoKey, pub:canonString, created }]
-    let _curKid = null;
+    let _dev = null;           // { id, kid, pub, priv:CryptoKey, created }
     let _ready = false;
-    let _status = 'idle';      // idle | ready | needs-restore | conflict | unsupported | error
-    let _remote = null;        // userKeys/{uid}
+    let _status = 'idle';      // idle | ready | unsupported | error
+    let _lastError = null;
     const _readyCbs = [];
-    const _peerCache = new Map();   // uid → { t, v:{pub,kid}|null }
-    const _aesCache = new Map();    // `${myKid}|${peerKid}|${dmKey}` → CryptoKey
-    const _msgCache = new Map();    // `${dmKey}/${id}/${iv}` → bundle
+    const _devCache = new Map();   // uid → { t, v:[{id,pub,kid}] }
+    const _kekCache = new Map();   // `${myKid}|${theirKid}|${dmKey}` → CryptoKey
+    const _msgCache = new Map();
 
     function _setStatus(s) {
       _status = s;
       _ready = (s === 'ready');
       if (_ready) _readyCbs.slice().forEach(cb => { try { cb(); } catch (e) {} });
     }
+    const _rand = n => crypto.getRandomValues(new Uint8Array(n));
+    const _importPub = canon => subtle.importKey('jwk', Object.assign(JSON.parse(canon), { ext: true }), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
 
-    async function _genKey() {
+    async function _genDevice() {
       const kp = await subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-      const pubJwk = await subtle.exportKey('jwk', kp.publicKey);
-      const canon = canonPub(pubJwk);
-      const kid = await kidOf(canon);
-      return { kid, priv: kp.privateKey, pub: canon, created: Date.now() };
+      const pub = canonPub(await subtle.exportKey('jwk', kp.publicKey));
+      return { id: hex(_rand(10)), kid: await kidOf(pub), pub, priv: kp.privateKey, created: Date.now() };
+    }
+    async function _saveDev() {
+      await store.set('dev_' + _uid, { id: _dev.id, kid: _dev.kid, pub: _dev.pub, created: _dev.created, jwk: await subtle.exportKey('jwk', _dev.priv) });
+    }
+    async function _loadDev() {
+      const r = await store.get('dev_' + _uid);
+      if (!r || !r.jwk || !r.id) return null;
+      try {
+        const priv = await subtle.importKey('jwk', r.jwk, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+        if (await kidOf(r.pub) !== r.kid) return null;
+        return { id: r.id, kid: r.kid, pub: r.pub, priv, created: r.created };
+      } catch (e) { return null; }
     }
 
-    // نحفظ المفاتيح بصيغة JWK (قابلة للتخزين في IndexedDB وlocalStorage معاً)
-    async function _saveRing() {
-      const ser = [];
-      for (const r of _ring) ser.push({ kid: r.kid, pub: r.pub, created: r.created, jwk: await subtle.exportKey('jwk', r.priv) });
-      await store.set('ring_' + _uid, ser);
-      await store.set('cur_' + _uid, _curKid);
+    async function _fetchDevices(uid) {
+      const raw = await FB.get(`userDevices/${uid}`);
+      const out = [];
+      for (const id of Object.keys(raw || {})) {
+        const r = raw[id];
+        if (!r || typeof r.pub !== 'string' || r.pub.length > 400) continue;
+        try {
+          const kid = await kidOf(r.pub);
+          if (r.kid && r.kid !== kid) continue;      // غير متسق → تجاهل
+          await _importPub(r.pub);                    // يتأكد أنه مفتاح صالح
+          out.push({ id, pub: r.pub, kid, ts: r.ts || 0 });
+        } catch (e) {}
+      }
+      return out;
+    }
+    async function getDevices(uid, fresh) {
+      const c = _devCache.get(uid);
+      if (c && !fresh && Date.now() - c.t < 10000) return c.v;
+      let v;
+      try { v = await _fetchDevices(uid); } catch (e) { v = c ? c.v : []; }
+      _devCache.set(uid, { t: Date.now(), v });
+      return v;
     }
 
-    async function _publish(rec) {
-      await FB.set(`userKeys/${_uid}`, { pub: rec.pub, kid: rec.kid, v: VERSION, ts: Date.now() });
-      _remote = { pub: rec.pub, kid: rec.kid };
-    }
-
-    /** يهيّئ مفاتيح المستخدم. يرجع الحالة. */
+    /** يهيّئ هوية هذا الجهاز وينشرها تلقائياً. */
     async function init(uid) {
-      _uid = uid; _ready = false; _ring = []; _curKid = null; _aesCache.clear(); _msgCache.clear(); _peerCache.clear();
+      _uid = uid; _ready = false; _dev = null; _kekCache.clear(); _msgCache.clear(); _devCache.clear();
       if (!subtle) { _status = 'unsupported'; return _status; }
       try {
-        _ring = [];
-        for (const r of ((await store.get('ring_' + uid)) || [])) {
-          try {
-            let priv = r.priv;
-            if (!priv && r.jwk) priv = await subtle.importKey('jwk', r.jwk, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-            if (priv) _ring.push({ kid: r.kid, pub: r.pub, created: r.created, priv });
-          } catch (e) {}
-        }
-        _curKid = (await store.get('cur_' + uid)) || null;
-        if (_curKid && !_ring.some(r => r.kid === _curKid)) _curKid = null;
-        _remote = await FB.get(`userKeys/${uid}`);
-
-        if (_curKid) {
-          // لدينا مفتاح محلي
-          if (!_remote) { await _publish(_ring.find(r => r.kid === _curKid)); _setStatus('ready'); return _status; }
-          if (_remote.kid === _curKid) { _setStatus('ready'); return _status; }
-          // المفتاح المنشور مختلف: هل هو من مفاتيحنا القديمة؟ إن كان، نجعله الحالي
-          const old = _ring.find(r => r.kid === _remote.kid);
-          if (old) { _curKid = old.kid; await _saveRing(); _setStatus('ready'); return _status; }
-          _status = 'conflict'; _ready = false; return _status;     // جهاز آخر نشر مفتاحاً جديداً
-        }
-        // لا مفتاح محلي
-        if (_remote && _remote.kid) { _status = 'needs-restore'; _ready = false; return _status; }
-        const rec = await _genKey();
-        _ring = [rec]; _curKid = rec.kid; await _saveRing(); await _publish(rec);
+        _dev = await _loadDev();
+        if (!_dev) { _dev = await _genDevice(); await _saveDev(); }
+        await FB.set(`userDevices/${uid}/${_dev.id}`, { pub: _dev.pub, kid: _dev.kid, v: VERSION, ts: _dev.created });
+        // تنظيف: المفتاح القديم (نسخة سابقة) + إبقاء أحدث MAX_DEVICES فقط
+        try { if (FB.del) await FB.del(`userKeys/${uid}`); } catch (e) {}
+        try {
+          const all = (await _fetchDevices(uid)).sort((a, b) => b.ts - a.ts);
+          const extra = all.filter(d => d.id !== _dev.id).slice(MAX_DEVICES - 1);
+          if (FB.del) for (const d of extra) await FB.del(`userDevices/${uid}/${d.id}`);
+        } catch (e) {}
         _setStatus('ready');
         return _status;
       } catch (e) {
         _status = 'error'; _ready = false; _lastError = e; return _status;
       }
     }
-    let _lastError = null;
 
-    /** إنشاء مفتاح جديد لهذا الجهاز (يُبقي القديم محلياً إن وجد) وينشره. */
-    async function createNewKey() {
-      if (!_uid) throw new Error('not_initialized');
-      const rec = await _genKey();
-      _ring.push(rec); _curKid = rec.kid;
-      await _saveRing(); await _publish(rec);
-      _aesCache.clear();
-      _setStatus('ready');
-      return rec.kid;
+    /** أجهزتي المسجّلة (للعرض) */
+    async function myDevices() {
+      if (!_uid) return [];
+      return (await getDevices(_uid, true)).map(d => ({ id: d.id, current: !!_dev && d.id === _dev.id, ts: d.ts }));
+    }
+    /** إزالة كل أجهزتي الأخرى (إن ضاع جهاز) */
+    async function removeOtherDevices() {
+      if (!_uid || !_dev || !FB.del) return 0;
+      const all = await _fetchDevices(_uid); let n = 0;
+      for (const d of all) if (d.id !== _dev.id) { await FB.del(`userDevices/${_uid}/${d.id}`); n++; }
+      _devCache.delete(_uid);
+      return n;
     }
 
-    /* ── نسخة احتياطية بكلمة سر ─────────────────────────────── */
-    async function _passKey(pass, salt, iter) {
-      const base = await subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
-      return subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base,
-        { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-    }
-
-    async function createBackup(passphrase) {
-      if (!_ready) throw new Error('not_ready');
-      if (!passphrase || passphrase.length < 8) throw new Error('weak_passphrase');
-      const keys = [];
-      for (const r of _ring) {
-        const jwk = await subtle.exportKey('jwk', r.priv);
-        keys.push({ kid: r.kid, pub: r.pub, jwk, created: r.created });
-      }
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const k = await _passKey(passphrase, salt, PBKDF2_ITER);
-      const ct = await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: enc.encode('nabda-e2e-backup|' + _uid) }, k,
-        enc.encode(JSON.stringify({ cur: _curKid, keys })));
-      const blob = { v: VERSION, salt: b64(salt), iv: b64(iv), ct: b64(ct), iter: PBKDF2_ITER, ts: Date.now() };
-      await FB.set(`userData/${_uid}/e2eBackup`, blob);
-      return true;
-    }
-
-    async function hasBackup() {
-      if (!_uid) return false;
-      try { return !!(await FB.get(`userData/${_uid}/e2eBackup`)); } catch (e) { return false; }
-    }
-
-    async function restoreBackup(passphrase) {
-      if (!_uid) throw new Error('not_initialized');
-      const b = await FB.get(`userData/${_uid}/e2eBackup`);
-      if (!b) throw new Error('no_backup');
-      let plain;
-      try {
-        const k = await _passKey(passphrase || '', unb64(b.salt), b.iter);
-        plain = await subtle.decrypt({ name: 'AES-GCM', iv: unb64(b.iv), additionalData: enc.encode('nabda-e2e-backup|' + _uid) }, k, unb64(b.ct));
-      } catch (e) { throw new Error('wrong_passphrase'); }
-      const data = JSON.parse(dec.decode(plain));
-      const ring = [];
-      for (const k of data.keys) {
-        const priv = await subtle.importKey('jwk', k.jwk, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-        ring.push({ kid: k.kid, priv, pub: k.pub, created: k.created });
-      }
-      if (!ring.length) throw new Error('empty_backup');
-      _ring = ring; _curKid = ring.some(r => r.kid === data.cur) ? data.cur : ring[ring.length - 1].kid;
-      await _saveRing();
-      const cur = _ring.find(r => r.kid === _curKid);
-      if (!_remote || _remote.kid !== _curKid) await _publish(cur);
-      _aesCache.clear(); _msgCache.clear();
-      _setStatus('ready');
-      return true;
-    }
-
-    /* ── مفاتيح الطرف الآخر ─────────────────────────────────── */
+    /** أجهزة الطرف الآخر (truthy إن كان يدعم التشفير) */
     async function getPeerKey(peerUid, fresh) {
-      const c = _peerCache.get(peerUid);
-      if (c && !fresh && Date.now() - c.t < 30000) return c.v;
-      let v = null;
-      try {
-        const r = await FB.get(`userKeys/${peerUid}`);
-        if (r && typeof r.pub === 'string' && r.pub.length < 400) {
-          const kid = await kidOf(r.pub);
-          if (r.kid && r.kid !== kid) v = null;          // بيانات غير متسقة → اعتبرها غير موجودة
-          else v = { pub: r.pub, kid };
-        }
-      } catch (e) { v = c ? c.v : null; }
-      _peerCache.set(peerUid, { t: Date.now(), v });
-      return v;
+      const d = await getDevices(peerUid, fresh);
+      return d.length ? { devices: d } : null;
     }
-
-    async function _importPub(canon) {
-      return subtle.importKey('jwk', Object.assign(JSON.parse(canon), { ext: true }), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
-    }
-
-    async function _aesFor(myRec, theirCanon, dmKey) {
-      const theirKid = await kidOf(theirCanon);
-      const ck = `${myRec.kid}|${theirKid}|${dmKey}`;
-      if (_aesCache.has(ck)) return _aesCache.get(ck);
-      const pub = await _importPub(theirCanon);
-      const bits = await subtle.deriveBits({ name: 'ECDH', public: pub }, myRec.priv, 256);
-      const hk = await subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
-      const aes = await subtle.deriveKey(
-        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: enc.encode('nabda-e2e-v1|' + dmKey) },
-        hk, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-      _aesCache.set(ck, aes);
-      return aes;
-    }
-
-    const _aad = (dmKey, senderUid) => enc.encode(`${dmKey}|${senderUid}`);
-
-    /** هل نستطيع تشفير رسالة لهذا الطرف الآن؟ */
     async function canEncryptTo(peerUid) {
       if (!_ready) return false;
       return !!(await getPeerKey(peerUid));
     }
 
+    /* ── اشتقاق مفتاح التغليف بين جهازين ── */
+    async function _kek(myRec, theirCanon, dmKey) {
+      const theirKid = await kidOf(theirCanon);
+      const ck = `${myRec.kid}|${theirKid}|${dmKey}`;
+      if (_kekCache.has(ck)) return _kekCache.get(ck);
+      const bits = await subtle.deriveBits({ name: 'ECDH', public: await _importPub(theirCanon) }, myRec.priv, 256);
+      const hk = await subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+      const k = await subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: enc.encode('nabda-e2e-v2-wrap|' + dmKey) },
+        hk, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      _kekCache.set(ck, k);
+      return k;
+    }
+    const _aad = (dmKey, senderUid) => enc.encode(`${dmKey}|${senderUid}`);
+    const _wrapAad = (dmKey, senderUid, rkid) => enc.encode(`${dmKey}|${senderUid}|${rkid}`);
+
     const PLAIN_KEYS = ['type', 'sender', 'ts', 'status', 'forwarded', 'replyTo', 'reactions', 'edited', 'editedAt', 'deleted', 'deletedAt', 'e2e', 'id'];
 
-    /**
-     * يبني رسالة مشفّرة. يرجع الكائن الجاهز للكتابة، أو null إن لم يكن الطرف الآخر يملك مفتاحاً.
-     * base = { sender, ts, status }  و payload = المحتوى الأصلي.
-     */
+    /** يبني رسالة مشفّرة (أو null إن لم يكن للطرف الآخر أجهزة). */
     async function encryptMessage(dmKey, peerUid, base, payload) {
       if (!_ready) throw new Error('not_ready');
-      const peer = await getPeerKey(peerUid, true);
-      if (!peer) return null;
-      const my = _ring.find(r => r.kid === _curKid);
-      const aes = await _aesFor(my, peer.pub, dmKey);
+      const [peerDevs, myDevs] = await Promise.all([getDevices(peerUid, true), getDevices(_uid, true)]);
+      if (!peerDevs.length) return null;
+      const recips = new Map();
+      peerDevs.concat(myDevs).forEach(d => recips.set(d.kid, d));
+      recips.set(_dev.kid, { id: _dev.id, kid: _dev.kid, pub: _dev.pub });     // جهازي الحالي دائماً
+
       const bundle = {};
       Object.keys(payload || {}).forEach(k => { if (!PLAIN_KEYS.includes(k) && payload[k] !== undefined) bundle[k] = payload[k]; });
       if (payload && payload.replyTo && payload.replyTo.text != null) bundle.rt = payload.replyTo.text;
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const ct = await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: _aad(dmKey, base.sender) }, aes, enc.encode(JSON.stringify(bundle)));
+
+      const rawCk = _rand(32);
+      const ckKey = await subtle.importKey('raw', rawCk, 'AES-GCM', false, ['encrypt']);
+      const iv = _rand(12);
+      const ct = await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: _aad(dmKey, base.sender) }, ckKey, enc.encode(JSON.stringify(bundle)));
+      const w = {};
+      for (const d of recips.values()) {
+        const kek = await _kek(_dev, d.pub, dmKey);
+        const wiv = _rand(12);
+        const wct = await subtle.encrypt({ name: 'AES-GCM', iv: wiv, additionalData: _wrapAad(dmKey, base.sender, d.kid) }, kek, rawCk);
+        w[d.kid] = { iv: b64(wiv), ct: b64(wct) };
+      }
       const msg = Object.assign({}, base, { type: payload.type || 'text' });
       if (payload.replyTo) msg.replyTo = { id: payload.replyTo.id, sender: payload.replyTo.sender, type: payload.replyTo.type };
       if (payload.forwarded) msg.forwarded = true;
-      msg.e2e = { v: VERSION, iv: b64(iv), ct: b64(ct), skid: my.kid, rkid: peer.kid, spk: my.pub, rpk: peer.pub };
+      msg.e2e = { v: VERSION, iv: b64(iv), ct: b64(ct), skid: _dev.kid, spk: _dev.pub, w };
       return msg;
+    }
+
+    // يتأكد أن مفتاح الجهاز المُرسِل مسجّل فعلاً تحت حساب المرسل (لا يستطيع غيره تسجيله)
+    async function _senderDeviceOk(sender, skid, spk) {
+      if (sender === _uid && _dev && _dev.kid === skid && _dev.pub === spk) return true;
+      let devs = await getDevices(sender);
+      if (devs.some(d => d.kid === skid && d.pub === spk)) return true;
+      devs = await getDevices(sender, true);
+      return devs.some(d => d.kid === skid && d.pub === spk);
     }
 
     async function _bundleOf(dmKey, m) {
       const e = m.e2e;
-      if (!e || e.v !== VERSION || typeof e.iv !== 'string' || typeof e.ct !== 'string') throw new Error('bad_format');
-      const ck = [dmKey, m.id, m.sender, e.iv, e.skid, e.rkid, e.spk, e.rpk, e.ct].join('/');
+      if (!e || e.v !== VERSION || typeof e.iv !== 'string' || typeof e.ct !== 'string' || typeof e.spk !== 'string' || !e.w || typeof e.skid !== 'string') throw new Error('bad_format');
+      const ck = [dmKey, m.id, m.sender, e.iv, e.skid, e.spk, e.ct, JSON.stringify(e.w)].join('/');
       if (m.id && _msgCache.has(ck)) return _msgCache.get(ck);
-      const mine = (m.sender === _uid);
-      const myKid = mine ? e.skid : e.rkid;
-      const theirCanon = mine ? e.rpk : e.spk;
-      const rec = _ring.find(r => r.kid === myKid);
-      if (!rec) throw new Error('no_key');
-      if (typeof theirCanon !== 'string' || theirCanon.length > 400) throw new Error('bad_format');
-      const aes = await _aesFor(rec, theirCanon, dmKey);
-      const pt = await subtle.decrypt({ name: 'AES-GCM', iv: unb64(e.iv), additionalData: _aad(dmKey, m.sender) }, aes, unb64(e.ct));
+      const mine = e.w[_dev.kid];
+      if (!mine || typeof mine.iv !== 'string' || typeof mine.ct !== 'string') throw new Error('no_key');
+      if (e.spk.length > 400 || (await kidOf(e.spk)) !== e.skid) throw new Error('bad_format');
+      if (!(await _senderDeviceOk(m.sender, e.skid, e.spk))) throw new Error('bad_sender');
+      const kek = await _kek(_dev, e.spk, dmKey);
+      const rawCk = await subtle.decrypt({ name: 'AES-GCM', iv: unb64(mine.iv), additionalData: _wrapAad(dmKey, m.sender, _dev.kid) }, kek, unb64(mine.ct));
+      const ckKey = await subtle.importKey('raw', rawCk, 'AES-GCM', false, ['decrypt']);
+      const pt = await subtle.decrypt({ name: 'AES-GCM', iv: unb64(e.iv), additionalData: _aad(dmKey, m.sender) }, ckKey, unb64(e.ct));
       const bundle = JSON.parse(dec.decode(pt));
       if (m.id) _msgCache.set(ck, bundle);
       return bundle;
@@ -334,7 +296,7 @@ window.E2E = (function () {
         const out = Object.assign({}, m);
         delete out.e2e;
         out.type = 'text';
-        out.text = _ready ? '🔒 رسالة مشفّرة — لا يمكن فك تشفيرها على هذا الجهاز' : '🔒 رسالة مشفّرة';
+        out.text = _ready ? '🔒 رسالة مشفّرة — أُرسلت قبل ربط هذا الجهاز' : '🔒 رسالة مشفّرة';
         out._undecryptable = true; out._enc = true;
         if (m.replyTo) out.replyTo = Object.assign({}, m.replyTo, { text: '🔒' });
         return out;
@@ -356,7 +318,7 @@ window.E2E = (function () {
       return out;
     }
 
-    /** إعادة تشفير نص معدّل (تعديل رسالة) */
+    /** إعادة تشفير نص معدّل (تعديل رسالة) — يرجع كائن e2e الجديد */
     async function reencryptEdit(dmKey, peerUid, rawMsg, newText) {
       const old = await _bundleOf(dmKey, rawMsg);
       const bundle = Object.assign({}, old, { text: newText, originalText: old.originalText || old.text });
@@ -366,34 +328,29 @@ window.E2E = (function () {
       return e ? e.e2e : null;
     }
 
-    /** رقم أمان من 30 رقماً يتطابق عند الطرفين */
+    /** رقم أمان (30 رقماً) يتطابق عند الطرفين: يعتمد على كل أجهزة الطرفين */
     async function safetyNumber(peerUid) {
-      const my = _ring.find(r => r.kid === _curKid);
-      const peer = await getPeerKey(peerUid, true);
-      if (!my || !peer) return null;
-      const parts = [{ u: _uid, p: my.pub }, { u: peerUid, p: peer.pub }].sort((a, b) => a.u < b.u ? -1 : 1);
-      const h = new Uint8Array(await subtle.digest('SHA-256', enc.encode(parts[0].p + '|' + parts[1].p)));
+      if (!_ready) return null;
+      const [pd, md] = await Promise.all([getDevices(peerUid, true), getDevices(_uid, true)]);
+      if (!pd.length) return null;
+      const side = (u, ds) => u + ':' + ds.map(d => d.kid).sort().join(',');
+      const parts = [side(_uid, md), side(peerUid, pd)].sort();
+      const h = new Uint8Array(await subtle.digest('SHA-256', enc.encode(parts.join('|'))));
       let digits = '';
       for (let i = 0; i < 30; i++) digits += String(h[i] % 10);
       return digits.match(/.{1,5}/g).join(' ');
     }
 
-    /** بصمة مفتاح الطرف الآخر (للتنبيه عند تغيّره) */
-    async function peerFingerprint(peerUid) {
-      const p = await getPeerKey(peerUid, true);
-      return p ? p.kid : null;
-    }
-
     return {
-      init, createNewKey, createBackup, restoreBackup, hasBackup,
+      init, myDevices, removeOtherDevices,
       canEncryptTo, getPeerKey, encryptMessage, decryptMessage, decryptList, decryptMap, reencryptEdit,
-      safetyNumber, peerFingerprint,
+      safetyNumber,
       isReady: () => _ready,
       status: () => _status,
       lastError: () => _lastError,
-      myKid: () => _curKid,
+      myKid: () => _dev && _dev.kid,
       onReady: cb => { _readyCbs.push(cb); if (_ready) { try { cb(); } catch (e) {} } return () => { const i = _readyCbs.indexOf(cb); if (i >= 0) _readyCbs.splice(i, 1); }; },
-      reset: () => { _uid = null; _ring = []; _curKid = null; _ready = false; _status = 'idle'; _aesCache.clear(); _msgCache.clear(); _peerCache.clear(); },
+      reset: () => { _uid = null; _dev = null; _ready = false; _status = 'idle'; _kekCache.clear(); _msgCache.clear(); _devCache.clear(); },
     };
   }
 
@@ -404,9 +361,9 @@ window.E2E = (function () {
     return _inst;
   }
   const api = { create, b64, unb64 };
-  ['init', 'createNewKey', 'createBackup', 'restoreBackup', 'hasBackup', 'canEncryptTo', 'getPeerKey',
+  ['init', 'myDevices', 'removeOtherDevices', 'canEncryptTo', 'getPeerKey',
     'encryptMessage', 'decryptMessage', 'decryptList', 'decryptMap', 'reencryptEdit', 'safetyNumber',
-    'peerFingerprint', 'isReady', 'status', 'lastError', 'myKid', 'onReady', 'reset'].forEach(k => {
+    'isReady', 'status', 'lastError', 'myKid', 'onReady', 'reset'].forEach(k => {
     api[k] = function () { const i = inst(); return i[k].apply(i, arguments); };
   });
   return api;
