@@ -214,6 +214,7 @@ window.Groups = (function () {
     updates[`groups/${gid}/pending/${targetUid}`] = null;
     await FB.upd('/', updates);
     await FB.set(`users/${targetUid}/groups/${gid}`, true);
+    await notifyMember(targetUid, gid, g.name, uid);
     return { ok: true };
   }
 
@@ -301,6 +302,7 @@ window.Groups = (function () {
     await FB.upd('/', updates);
     // أضف group index للعضو الجديد
     await FB.set(`users/${targetUid}/groups/${gid}`, true);
+    await notifyMember(targetUid, gid, g.name, uid);
     return { ok: true };
   }
 
