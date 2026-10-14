@@ -168,8 +168,8 @@ t('تثبيت في مجموعة (عضو)', as(db,bob).write('/pinnedMsgs/groupMs
 t('[هجوم] تثبيت في مجموعة (غير عضو)', as(db,mal).write('/pinnedMsgs/groupMsgs_g1', {msgId:'m1'}), false);
 t('تصويت (عضو)', as(db,bob).write(`/groupPolls/g1/p1/votes/${bob}`, 1), true);
 t('[هجوم] تصويت (غير عضو)', as(db,mal).write(`/groupPolls/g1/p1/votes/${mal}`, 1), false);
-t('إشعار: إرسال لشخص (fromUid=أنا)', as(db,mal).write(`/notifications/${alice}/n1`, {type:'friend_request',fromUid:mal,ts:1}), true);
-t('إشعار مجموعة (byUid=أنا)', as(db,alice).write(`/notifications/${bob}/n2`, {type:'added',byUid:alice,ts:1}), true);
+t('[هجوم] إشعار: طلب صداقة وهمي (fromUid=أنا بلا طلب فعلي)', as(db,mal).write(`/notifications/${alice}/n1`, {type:'friend_request',fromUid:mal,ts:1}), false);
+t('[هجوم] إشعار: نوع قديم/غير معروف (added)', as(db,alice).write(`/notifications/${bob}/n2`, {type:'added',byUid:alice,ts:1}), false);
 t('[هجوم] إشعار مزوّر', as(db,mal).write(`/notifications/${alice}/n3`, {type:'x',fromUid:bob}), false);
 t('قراءة إشعاراتي', as(db,alice).read(`/notifications/${alice}`), true);
 t('[خصوصية] قراءة إشعارات غيري', as(db,mal).read(`/notifications/${alice}`), false);
@@ -264,7 +264,7 @@ t('حذف رسالتي (placeholder)', as(db,alice).write('/dmMsgs/'+DMK+'/m1', 
 t('رسالة مجموعة عادية', as(db,alice).write('/groupMsgs/g1/q1', {sender:alice,ts:1,type:'text',text:'hi'}), true);
 t('[هجوم] مجموعة: انتحال مرسل', as(db,alice).write('/groupMsgs/g1/q2', {sender:bob,ts:1,type:'text',text:'x'}), false);
 t('[هجوم] مجموعة: غير عضو', as(db,mal).write('/groupMsgs/g1/q3', {sender:mal,ts:1,type:'text',text:'x'}), false);
-t('إشعار سليم', as(db,alice).write('/notifications/'+bob+'/x1', {type:'friend_request',fromUid:alice,ts:1,read:false}), true);
+t('إشعار سليم', as(db,alice).write('/notifications/'+bob+'/x1', {type:'friend_accept',fromUid:alice,ts:1,read:false}), true);
 t('[هجوم] إشعار نص ضخم', as(db,alice).write('/notifications/'+bob+'/x2', {type:'t',fromUid:alice,ts:1,pad:'x'.repeat(600)}), false);
 t('[هجوم] إشعار بلا type', as(db,alice).write('/notifications/'+bob+'/x3', {fromUid:alice,ts:1}), false);
 t('readReceipts: قراءة طرف المحادثة', as(db,alice).read('/readReceipts/'+DMK+'/'+bob), true);
@@ -347,6 +347,23 @@ t('[هجوم] typing: قيمة غير true', as(db,bob).write('/typing/group/g1/
 t('typing: الأدمن يمسح عقدة المجموعة', as(db,alice).write('/typing/group/g1', null), true);
 t('[هجوم] typing: المود يمسح عقدة المجموعة', as(db,carol).write('/typing/group/g1', null), false);
 t('[هجوم] typing: الأدمن يكتب عقدة كاملة بقيم', as(db,alice).write('/typing/group/g1', {ali:true}), false);
+
+/* ── notifications (v9): مربوطة بحدث حقيقي ── */
+const N=(type,o)=>Object.assign({type,ts:1,read:false},o);
+t('notif: friend_request بوجود طلب فعلي (dave→alice)', as(db,dave).write('/notifications/'+alice+'/n1', N('friend_request',{fromUid:dave})), true);
+t('[هجوم] notif: friend_request بدون طلب فعلي', as(db,mal).write('/notifications/'+alice+'/n2', N('friend_request',{fromUid:mal})), false);
+t('[هجوم] notif: انتحال fromUid', as(db,mal).write('/notifications/'+alice+'/n3', N('friend_request',{fromUid:dave})), false);
+t('notif: friend_accept بين أصدقاء (alice→bob)', as(db,alice).write('/notifications/'+bob+'/n4', N('friend_accept',{fromUid:alice})), true);
+t('[هجوم] notif: friend_accept لغير صديق', as(db,mal).write('/notifications/'+bob+'/n5', N('friend_accept',{fromUid:mal})), false);
+t('notif: group_add من الأدمن لعضو', as(db,alice).write('/notifications/'+bob+'/n6', N('group_add',{byUid:alice,gid:'g1',gname:'G1'})), true);
+t('notif: group_add من مود لعضو', as(db,carol).write('/notifications/'+bob+'/n7', N('group_add',{byUid:carol,gid:'g1'})), true);
+t('[هجوم] notif: group_add من عضو عادي', as(db,bob).write('/notifications/'+carol+'/n8', N('group_add',{byUid:bob,gid:'g1'})), false);
+t('[هجوم] notif: group_add لغير عضو', as(db,alice).write('/notifications/'+mal+'/n9', N('group_add',{byUid:alice,gid:'g1'})), false);
+t('[هجوم] notif: group_add من غريب', as(db,mal).write('/notifications/'+bob+'/n10', N('group_add',{byUid:mal,gid:'g1'})), false);
+t('[هجوم] notif: نوع غير معروف', as(db,alice).write('/notifications/'+bob+'/n11', N('promo',{fromUid:alice})), false);
+t('[بدون دخول] notif: كتابة', as(db,null).write('/notifications/'+bob+'/n12', N('friend_accept',{fromUid:alice})), false);
+t('notif: صاحب الحساب يحذف إشعاره', as(mk({notifications:{[bob]:{n0:N('friend_accept',{fromUid:alice})}}}),bob).write('/notifications/'+bob+'/n0', null), true);
+t('[هجوم] notif: غريب يحذف إشعار غيره', as(mk({notifications:{[bob]:{n0:N('friend_accept',{fromUid:alice})}}}),mal).write('/notifications/'+bob+'/n0', null), false);
 
 console.log(`\nالملف: ${which.split('/').pop()}  —  نجح ${pass} / فشل ${fail}`);
 failures.forEach(f=>console.log('  ✗', f));

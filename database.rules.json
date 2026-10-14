@@ -220,8 +220,8 @@
       "$uid": {
         ".read": "$uid === auth.uid",
         "$nid": {
-          ".write": "auth !== null && ($uid === auth.uid || (!data.exists() && (newData.child('fromUid').val() === auth.uid || newData.child('byUid').val() === auth.uid)))",
-          ".validate": "newData.hasChildren(['type','ts']) && newData.child('type').isString() && newData.child('type').val().length < 40",
+          ".write": "auth !== null && ($uid === auth.uid || (!data.exists() && ((newData.child('type').val() === 'friend_request' && newData.child('fromUid').val() === auth.uid && root.child('friendRequests').child($uid).child(auth.uid).exists()) || (newData.child('type').val() === 'friend_accept' && newData.child('fromUid').val() === auth.uid && root.child('users').child(auth.uid).child('friends').child($uid).exists()) || (newData.child('type').val() === 'group_add' && newData.child('byUid').val() === auth.uid && newData.child('gid').isString() && root.child('groups').child(newData.child('gid').val()).child('members').child($uid).exists() && (root.child('groups').child(newData.child('gid').val()).child('admin').val() === auth.uid || root.child('groups').child(newData.child('gid').val()).child('mods').child(auth.uid).exists())))))",
+          ".validate": "newData.hasChildren(['type','ts']) && newData.child('type').val() !== null && (newData.child('type').val() === 'friend_request' || newData.child('type').val() === 'friend_accept' || newData.child('type').val() === 'group_add')",
           "$f": {
             ".validate": "!newData.isString() || newData.val().length < 500"
           }
