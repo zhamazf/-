@@ -190,8 +190,8 @@ t('[بدون دخول] قراءة رمز دعوة', as(db,null).read('/inviteCod
 t('presence: كتابة حالتي', as(db,alice).write(`/presence/${alice}`, {online:true}), true);
 t('[هجوم] presence: كتابة حالة غيري', as(db,mal).write(`/presence/${alice}`, {online:false}), false);
 t('presence: قراءة الكل (الكود يقرأ presence كاملاً)', as(db,alice).read('/presence'), true);
-t('typing: كتابة', as(db,alice).write('/typing/dm/k/ali', true), true);
-t('typing: قراءة الكل', as(db,alice).read('/typing'), true);
+t('typing: كتابة', as(db,alice).write('/typing/dm/'+dm(alice,bob)+'/ali', true), true);
+t('typing: قراءة محادثتي', as(db,alice).read('/typing/dm/'+dm(alice,bob)), true);
 t('readReceipts: كتابة طابعي', as(db,alice).write(`/readReceipts/k/${alice}`, 5), true);
 t('[هجوم] readReceipts: طابع غيري', as(db,mal).write(`/readReceipts/k/${alice}`, 5), false);
 t('stories: قراءة الكل', as(db,alice).read('/stories'), true);
@@ -242,9 +242,9 @@ t('userDevices: حذف جهازي', as(db,alice).write(`/userDevices/${alice}/de
 t('userDevices: حذف كل أجهزتي (حذف الحساب)', as(db,alice).write(`/userDevices/${alice}`, null), true);
 t('[هجوم] userDevices: حذف أجهزة غيري', as(db,mal).write(`/userDevices/${alice}`, null), false);
 
-t('typing: كتابة باسمي الحقيقي', as(db,alice).write('/typing/dm/k/ali', true), true);
-t('[هجوم] typing: كتابة باسم شخص آخر', as(db,mal).write('/typing/dm/k/ali', true), false);
-t('typing: حذف مؤشري', as(db,alice).write('/typing/dm/k/ali', null), true);
+t('typing: كتابة باسمي الحقيقي', as(db,alice).write('/typing/dm/'+dm(alice,bob)+'/ali', true), true);
+t('[هجوم] typing: كتابة باسم شخص آخر', as(db,mal).write('/typing/dm/'+dm(alice,bob)+'/ali', true), false);
+t('typing: حذف مؤشري', as(db,alice).write('/typing/dm/'+dm(alice,bob)+'/ali', null), true);
 t('typing: مجموعة باسمي', as(db,alice).write('/typing/group/g1/ali', true), true);
 
 /* ── تشديد: حجم/بنية الرسائل، الإشعارات، readReceipts ── */
@@ -329,6 +329,24 @@ t('[هجوم] groups: صورة المجموعة من موقع خارجي', as(db
 t('stories: رابط Storage', as(db,alice).write(`/stories/${alice}/s2`, {ts:1,type:'image',url:'https://firebasestorage.googleapis.com/v0/b/b/o/x?alt=media'}), true);
 t('stories: dataURL', as(db,alice).write(`/stories/${alice}/s3`, {ts:1,type:'image',url:DURL+'AAAA'}), true);
 t('[هجوم] stories: رابط خارجي', as(db,alice).write(`/stories/${alice}/s4`, {ts:1,type:'image',url:'https://evil.example/t.gif'}), false);
+
+
+/* ── typing (v8): طرف المحادثة / عضو المجموعة فقط ── */
+const TK=dm(alice,bob);
+t('typing: alice تقرأ محادثتها', as(db,alice).read('/typing/dm/'+TK), true);
+t('[خصوصية] typing: mallory تقرأ محادثة غيرها', as(db,mal).read('/typing/dm/'+TK), false);
+t('[خصوصية] typing: سرد الجذر ممنوع', as(db,mal).read('/typing'), false);
+t('[خصوصية] typing: غير عضو يقرأ مجموعة', as(db,mal).read('/typing/group/g1'), false);
+t('typing: عضو يقرأ مجموعته', as(db,bob).read('/typing/group/g1'), true);
+t('typing: bob (طرف) يكتب', as(db,bob).write('/typing/dm/'+TK+'/bob', true), true);
+t('[هجوم] typing: mallory تكتب في محادثة غيرها', as(db,mal).write('/typing/dm/'+TK+'/mal', true), false);
+t('typing: عضو مجموعة يكتب', as(db,bob).write('/typing/group/g1/bob', true), true);
+t('[هجوم] typing: غير عضو مجموعة يكتب', as(db,mal).write('/typing/group/g1/mal', true), false);
+t('[هجوم] typing: نوع غير معروف', as(db,mal).write('/typing/foo/x/mal', true), false);
+t('[هجوم] typing: قيمة غير true', as(db,bob).write('/typing/group/g1/bob', 'x'), false);
+t('typing: الأدمن يمسح عقدة المجموعة', as(db,alice).write('/typing/group/g1', null), true);
+t('[هجوم] typing: المود يمسح عقدة المجموعة', as(db,carol).write('/typing/group/g1', null), false);
+t('[هجوم] typing: الأدمن يكتب عقدة كاملة بقيم', as(db,alice).write('/typing/group/g1', {ali:true}), false);
 
 console.log(`\nالملف: ${which.split('/').pop()}  —  نجح ${pass} / فشل ${fail}`);
 failures.forEach(f=>console.log('  ✗', f));

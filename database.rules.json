@@ -242,12 +242,13 @@
       }
     },
     "typing": {
-      ".read": "auth !== null",
       "$type": {
         "$chat": {
-          ".write": "auth !== null && $type === 'group' && root.child('groups').child($chat).child('admin').val() === auth.uid",
+          ".read": "auth !== null && (($type === 'dm' && $chat.contains(auth.uid)) || ($type === 'group' && root.child('groups').child($chat).child('members').child(auth.uid).exists()))",
+          ".write": "auth !== null && $type === 'group' && root.child('groups').child($chat).child('admin').val() === auth.uid && !newData.exists()",
           "$name": {
-            ".write": "auth !== null && root.child('usernames').child($name).val() === auth.uid"
+            ".write": "auth !== null && root.child('usernames').child($name).val() === auth.uid && (($type === 'dm' && $chat.contains(auth.uid)) || ($type === 'group' && root.child('groups').child($chat).child('members').child(auth.uid).exists()))",
+            ".validate": "newData.val() === true"
           }
         }
       }
