@@ -81,6 +81,7 @@
   let _searchMode   = false;
   let _searchQuery  = '';
   let _pinnedUnsub  = null;   // unsub للـ pinned listener
+  let _typingUnsub  = null;   // unsub لمؤشر الكتابة (للمحادثة المفتوحة فقط)
   let _showReplyBar = () => {}; // يُعاد تعريفها في buildChatInput
 
   /* ── Resolve UID helpers ─────────────────────────────────── */
@@ -170,6 +171,8 @@
   function stopMsgListener() {
     if (_msgUnsub) { _msgUnsub(); _msgUnsub=null; _prevLen=0; }
     if (_pinnedUnsub) { _pinnedUnsub(); _pinnedUnsub=null; } // v2
+    if (_typingUnsub) { _typingUnsub(); _typingUnsub=null; }
+    S.typingMap = {};
   }
 
   /* ═══════════════════════════════════════════════════════════
@@ -228,6 +231,13 @@
         S._pinnedMsg = pinned || null;
         _refreshPinnedBar();
       });
+      // مؤشر الكتابة: نستمع لمسار المحادثة المفتوحة فقط (بدل شجرة typing كاملة لكل المحادثات)
+      const _tKey  = type==='dm' ? Chat.dmKey(S.me, id) : id;
+      const _tPath = type==='dm' ? `typing/dm/${_tKey}` : `typing/group/${id}`;
+      _typingUnsub = FB.on(_tPath, v => {
+        S.typingMap = type==='dm' ? { dm: { [_tKey]: v || {} } } : { group: { [_tKey]: v || {} } };
+        refreshTyping(); refreshTopSub();
+      });
     } catch (err) {
       console.error('[startMsgListener] setup error:', err);
       UI.toast('تعذّر فتح المحادثة','error');
@@ -263,6 +273,8 @@
     // مراقبة حالة الاتصال
     addU(FB.onConnectionChange(isOnline => UI.setConnectionStatus(isOnline)));
     addU(FB.on(`users/${S.meUid}`, v=>{
+      // تنظيف مرة واحدة: إزالة الإيميل القديم من البروفايل العام (كان مقروءاً لكل المستخدمين)
+      if (v && v.email !== undefined && !S._emailPurged) { S._emailPurged = true; try { FB.del(`users/${S.meUid}/email`).catch(()=>{}); } catch(e){} }
       S.users[S.meUid]=v||{}; rebuildUserMaps(); refreshDyn();
       _startDmListeners(); _startFriendReqListener(); _startStoryListeners();
       _startGroupListeners(); _startFriendProfileListeners();
@@ -276,16 +288,27 @@
       if(S.screen==='dm'&&was!==JSON.stringify(Object.keys(S.blocked).sort())&&_dmReady)_rerenderChat();
       else refreshDyn();
     }));
-    addU(FB.on('presence', v=>{S.presence=v||{}; refreshPresence();}));
-    addU(FB.on('typing',   v=>{S.typingMap=v||{}; refreshTyping();}));
+    // presence: لكل مستخدم نحتاجه فقط (أصدقاء/أعضاء مجموعات/طلبات) + أنا — بدل تحميل كل المستخدمين
+    _ensurePresenceListener(S.meUid);
     // Periodic expired-story cleanup every 5 minutes
     if (!_storiesTimer) _storiesTimer = setInterval(()=>Stories.cleanExpired(S.stories, S.meUid), 300000);
   }
 
   // ── Profile listeners — بس لمين محتاجينه فعلاً (أصدقاء/أعضاء مجموعات/طلبات) ──
   const _profileUnsubs = {};
+  const _presenceUnsubs = {};
+  function _ensurePresenceListener(uid) {
+    if (!uid || _presenceUnsubs[uid]) return;
+    _presenceUnsubs[uid] = FB.on(`presence/${uid}`, v => {
+      if (v) S.presence[uid] = v; else delete S.presence[uid];
+      refreshPresence();
+    }, () => { delete _presenceUnsubs[uid]; });
+    addU(() => { if (_presenceUnsubs[uid]) { _presenceUnsubs[uid](); delete _presenceUnsubs[uid]; } });
+  }
   function _ensureProfileListener(uid) {
-    if (!uid || uid === S.meUid || _profileUnsubs[uid]) return;
+    if (!uid || uid === S.meUid) return;
+    _ensurePresenceListener(uid);
+    if (_profileUnsubs[uid]) return;
     _profileUnsubs[uid] = FB.on(`users/${uid}`, v => {
       if (v) S.users[uid] = v; else delete S.users[uid];
       rebuildUserMaps(); refreshDyn();
@@ -393,7 +416,7 @@
     // v2: استمع لآخر 60 رسالة للمجموعة لحساب الغير مقروء
     const _gMsgKey = `_gmsg_${gid}`;
     if (!_groupUnsubs[_gMsgKey]) {
-      _groupUnsubs[_gMsgKey] = FB.on(`groupMsgs/${gid}`, v => {
+      _groupUnsubs[_gMsgKey] = FB.onLimit(`groupMsgs/${gid}`, 60, v => {
         if (v) S.groupMsgsCache[gid] = v; else delete S.groupMsgsCache[gid];
         refreshBadges();
       });

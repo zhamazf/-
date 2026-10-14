@@ -19,9 +19,9 @@ const data = {
     g2: { id:'g2', admin:bob, name:'G2', members:{[bob]:true}, mods:{}, inviteCode:'CODE2', inviteActive:false }
   },
   inviteCodes: { CODE1:'g1', CODE2:'g2' },
-  groupMsgs: { g1:{ m1:{sender:'ali',text:'hi',ts:1} }, g2:{ m1:{sender:'bob',text:'secret',ts:1} } },
+  groupMsgs: { g1:{ m1:{sender:alice,text:'hi',ts:1}, m2:{sender:bob,text:'yo',ts:2} }, g2:{ m1:{sender:bob,text:'secret',ts:1} } },
   groupPolls: { g1:{ p1:{question:'q'} } },
-  dmMsgs: { [dm(alice,bob)]:{ m1:{sender:'ali',text:'hi',ts:1} } },
+  dmMsgs: { [dm(alice,bob)]:{ m1:{sender:alice,text:'hi',ts:1,status:'sent'}, m2:{sender:bob,text:'re',ts:2,status:'sent'} } },
   friendRequests: { [alice]:{ [dave]:{from:dave,ts:1} } },
   blockedUsers: { },
 };
@@ -141,7 +141,7 @@ t('[هجوم] المود يطرد الأدمن', as(db,carol).write('/groups/g1/
 t('[هجوم] المود يغيّر الأدمن لنفسه', as(db,carol).write('/groups/g1/admin', carol), false);
 t('[هجوم] المود يغيّر رمز الدعوة', as(db,carol).write('/groups/g1/inviteCode', 'EVIL'), false);
 t('[هجوم] المود يحذف المجموعة', as(db,carol).write('/groups/g1', null), false);
-t('المود يعدل اسم/صورة المجموعة (update)', as(db,carol).update('/groups/g1', {name:'N', photo:'p'}), true);
+t('المود يعدل اسم/صورة المجموعة (update)', as(db,carol).update('/groups/g1', {name:'N', photo:'data:image/jpeg;base64,AAAA'}), true);
 t('الأدمن يعدل رمز الدعوة (تفعيل/تعطيل)', as(db,alice).update('/groups/g1', {inviteActive:false}), true);
 t('الأدمن يعيّن مود', as(db,alice).write('/groups/g1/mods/'+bob, true), true);
 t('الأدمن ينقل الملكية (ذري)', as(db,alice).update('/', {'groups/g1/admin':bob, ['groups/g1/mods/'+alice]:null, ['groups/g1/mods/'+bob]:null}), true);
@@ -252,14 +252,15 @@ const DMK=dm(alice,bob);
 t('رسالة DM عادية', as(db,alice).write('/dmMsgs/'+DMK+'/n1', {sender:alice,ts:1,type:'text',text:'مرحبا',status:'sent'}), true);
 t('[هجوم] DM: انتحال المرسل عند الإنشاء', as(db,alice).write('/dmMsgs/'+DMK+'/n2', {sender:bob,ts:1,type:'text',text:'x'}), false);
 t('[هجوم] DM: نص ضخم', as(db,alice).write('/dmMsgs/'+DMK+'/n3', {sender:alice,ts:1,type:'text',text:'x'.repeat(6000)}), false);
-t('DM: صورة مضمّنة كبيرة مسموحة', as(db,alice).write('/dmMsgs/'+DMK+'/n4', {sender:alice,ts:1,type:'image',url:'d'.repeat(3000000)}), true);
-t('[هجوم] DM: url ضخم جداً', as(db,alice).write('/dmMsgs/'+DMK+'/n5', {sender:alice,ts:1,type:'image',url:'d'.repeat(9500000)}), false);
+const DURL='data:image/jpeg;base64,';
+t('DM: صورة مضمّنة كبيرة مسموحة', as(db,alice).write('/dmMsgs/'+DMK+'/n4', {sender:alice,ts:1,type:'image',url:DURL+'d'.repeat(3000000)}), true);
+t('[هجوم] DM: url ضخم جداً', as(db,alice).write('/dmMsgs/'+DMK+'/n5', {sender:alice,ts:1,type:'image',url:DURL+'d'.repeat(9500000)}), false);
 t('[هجوم] DM: بلا sender/ts', as(db,alice).write('/dmMsgs/'+DMK+'/n6', {type:'text',text:'x'}), false);
 t('DM مشفّر: e2e بحجم معقول', as(db,alice).write('/dmMsgs/'+DMK+'/n7', {sender:alice,ts:1,type:'text',e2e:{v:1,iv:'A',ct:'B'.repeat(2000000),skid:'k',spk:'p',w:{kk:{iv:'A',ct:'B'}}}}), true);
 t('[هجوم] DM مشفّر: ct ضخم', as(db,alice).write('/dmMsgs/'+DMK+'/n8', {sender:alice,ts:1,type:'text',e2e:{v:1,iv:'A',ct:'B'.repeat(13000000),skid:'k',spk:'p',w:{}}}), false);
 t('تفاعل على رسالة موجودة (الطرف الآخر)', as(db,bob).write('/dmMsgs/'+DMK+'/m1/reactions/%E2%9D%A4/'+bob, true), true);
 t('تعديل رسالتي', as(db,alice).update('/dmMsgs/'+DMK+'/m1', {text:'معدل',edited:true,editedAt:2}), true);
-t('حذف رسالتي (placeholder)', as(db,alice).write('/dmMsgs/'+DMK+'/m1', {id:'m1',sender:'ali',ts:1,deleted:true,deletedAt:3}), true);
+t('حذف رسالتي (placeholder)', as(db,alice).write('/dmMsgs/'+DMK+'/m1', {id:'m1',sender:alice,ts:1,deleted:true,deletedAt:3}), true);
 t('رسالة مجموعة عادية', as(db,alice).write('/groupMsgs/g1/q1', {sender:alice,ts:1,type:'text',text:'hi'}), true);
 t('[هجوم] مجموعة: انتحال مرسل', as(db,alice).write('/groupMsgs/g1/q2', {sender:bob,ts:1,type:'text',text:'x'}), false);
 t('[هجوم] مجموعة: غير عضو', as(db,mal).write('/groupMsgs/g1/q3', {sender:mal,ts:1,type:'text',text:'x'}), false);
@@ -270,6 +271,64 @@ t('readReceipts: قراءة طرف المحادثة', as(db,alice).read('/readRe
 t('[خصوصية] readReceipts: غير طرف', as(db,mal).read('/readReceipts/'+DMK+'/'+bob), false);
 t('readReceipts: عضو مجموعة يقرأ', as(db,bob).read('/readReceipts/group_g1/'+alice), true);
 t('[خصوصية] readReceipts: غير عضو مجموعة', as(db,mal).read('/readReceipts/group_g1/'+alice), false);
+
+/* ── تشديد (v7): منع التلاعب برسائل الطرف الآخر ── */
+const DMP='/dmMsgs/'+DMK;
+t('[هجوم] DM: bob يعدّل نص رسالة alice', as(db,bob).update(DMP+'/m1', {text:'مزوّر',edited:true}), false);
+t('[هجوم] DM: bob يكتب فوق رسالة alice كاملة', as(db,bob).write(DMP+'/m1', {sender:bob,ts:1,text:'x'}), false);
+t('[هجوم] DM: bob يحذف رسالة alice', as(db,bob).write(DMP+'/m1', null), false);
+t('[هجوم] DM: alice تغيّر sender رسالتها إلى bob', as(db,alice).update(DMP+'/m1', {sender:bob}), false);
+t('[هجوم] DM: bob يستبدل المحادثة كلها بمحتوى جديد', as(db,bob).write(DMP, {x1:{sender:bob,ts:1,text:'x'}}), false);
+t('[هجوم] DM: mallory تحذف محادثة غيرها', as(db,mal).write(DMP, null), false);
+t('DM: bob يعدّل رسالته هو', as(db,bob).update(DMP+'/m2', {text:'معدّل',edited:true}), true);
+t('DM: bob يحذف رسالته هو', as(db,bob).write(DMP+'/m2', null), true);
+t('DM: الطرف الآخر يضع status=delivered', as(db,bob).write(DMP+'/m1/status', 'delivered'), true);
+t('DM: المرسل يعدّل status رسالته (لا يؤثر إلا على عرضه هو)', as(db,alice).write(DMP+'/m1/status', 'read'), true);
+t('[هجوم] DM: المرسل يضع status غير معروف', as(db,alice).write(DMP+'/m1/status', 'hacked'), false);
+t('[هجوم] DM: status بقيمة غير معروفة', as(db,bob).write(DMP+'/m1/status', 'hacked'), false);
+t('[هجوم] DM: status على رسالة غير موجودة', as(db,bob).write(DMP+'/ghost/status', 'read'), false);
+t('[هجوم] DM: mallory تضع status', as(db,mal).write(DMP+'/m1/status', 'read'), false);
+t('DM: alice تتفاعل على رسالة bob', as(db,alice).write(DMP+'/m2/reactions/%E2%9D%A4/'+alice, true), true);
+t('DM: إزالة تفاعلي', as(db,alice).write(DMP+'/m2/reactions/%E2%9D%A4/'+alice, null), true);
+t('[هجوم] DM: تفاعل باسم الطرف الآخر', as(db,alice).write(DMP+'/m2/reactions/%E2%9D%A4/'+bob, true), false);
+t('[هجوم] DM: mallory تتفاعل', as(db,mal).write(DMP+'/m1/reactions/%E2%9D%A4/'+mal, true), false);
+t('[هجوم] DM: تفاعل بقيمة غير true', as(db,bob).write(DMP+'/m1/reactions/%E2%9D%A4/'+bob, 'x'), false);
+t('[هجوم] DM: مفتاح تفاعل طويل', as(db,bob).write(DMP+'/m1/reactions/'+'e'.repeat(40)+'/'+bob, true), false);
+t('DM: رابط Firebase Storage مسموح', as(db,alice).write(DMP+'/u1', {sender:alice,ts:1,type:'image',url:'https://firebasestorage.googleapis.com/v0/b/nabda-chat.firebasestorage.app/o/images%2Fx.jpg?alt=media&token=t'}), true);
+t('[هجوم] DM: رابط تتبّع خارجي https', as(db,alice).write(DMP+'/u2', {sender:alice,ts:1,type:'image',url:'https://evil.example/track.gif'}), false);
+t('[هجوم] DM: رابط خارجي http', as(db,alice).write(DMP+'/u3', {sender:alice,ts:1,type:'image',url:'http://evil.example/t.gif'}), false);
+t('[هجوم] DM: javascript: في url', as(db,alice).write(DMP+'/u4', {sender:alice,ts:1,type:'image',url:'javascript:alert(1)'}), false);
+t('[هجوم] DM: حقل data خارجي', as(db,alice).write(DMP+'/u5', {sender:alice,ts:1,type:'image',data:'https://evil.example/t.gif'}), false);
+t('DM: حقل data بصيغة dataURL', as(db,alice).write(DMP+'/u6', {sender:alice,ts:1,type:'image',data:DURL+'AAAA'}), true);
+
+t('[هجوم] مجموعة: bob يعدّل رسالة alice', as(db,bob).update('/groupMsgs/g1/m1', {text:'مزوّر'}), false);
+t('[هجوم] مجموعة: bob يحذف رسالة alice', as(db,bob).write('/groupMsgs/g1/m1', null), false);
+t('[هجوم] مجموعة: bob يمسح كل رسائل المجموعة', as(db,bob).write('/groupMsgs/g1', null), false);
+t('[هجوم] مجموعة: مود (carol) يمسح كل الرسائل', as(db,carol).write('/groupMsgs/g1', null), false);
+t('مجموعة: الأدمن يحذف رسائل المجموعة (حذف المجموعة)', as(db,alice).write('/groupMsgs/g1', null), true);
+t('مجموعة: bob يعدّل رسالته', as(db,bob).update('/groupMsgs/g1/m2', {text:'معدّل'}), true);
+t('[هجوم] مجموعة: تغيير sender عند التعديل', as(db,bob).update('/groupMsgs/g1/m2', {sender:alice}), false);
+t('مجموعة: bob يتفاعل على رسالة alice', as(db,bob).write('/groupMsgs/g1/m1/reactions/%E2%9D%A4/'+bob, true), true);
+t('[هجوم] مجموعة: تفاعل باسم alice', as(db,bob).write('/groupMsgs/g1/m1/reactions/%E2%9D%A4/'+alice, true), false);
+t('[هجوم] مجموعة: غير عضو يتفاعل', as(db,mal).write('/groupMsgs/g1/m1/reactions/%E2%9D%A4/'+mal, true), false);
+t('[هجوم] مجموعة: رابط تتبّع خارجي', as(db,alice).write('/groupMsgs/g1/u1', {sender:alice,ts:1,type:'image',url:'https://evil.example/t.gif'}), false);
+t('مجموعة: رابط Storage مسموح', as(db,alice).write('/groupMsgs/g1/u2', {sender:alice,ts:1,type:'image',url:'https://firebasestorage.googleapis.com/v0/b/b/o/x?alt=media'}), true);
+
+t('[خصوصية] users: منع كتابة email في قاعدة البيانات', as(db,alice).write(`/users/${alice}/email`, 'a@x.com'), false);
+t('[خصوصية] users: إنشاء بروفايل مع email مرفوض', as(db,mal).write(`/users/${mal}`, {uid:mal,username:'mal',email:'m@x.com'}), false);
+t('users: إنشاء بروفايل بدون email', as(db,mal).write(`/users/${mal}`, {uid:mal,username:'mal',emoji:'',bio:'',photo:null,createdAt:1}), true);
+t('users: حذف email القديم (تنظيف)', as(db,alice).write(`/users/${alice}/email`, null), true);
+t('users: صورة dataURL', as(db,alice).write(`/users/${alice}/photo`, DURL+'AAAA'), true);
+t('users: صورة حساب Google', as(db,alice).write(`/users/${alice}/photo`, 'https://lh3.googleusercontent.com/a/AbCd=s96-c'), true);
+t('users: حذف الصورة (null)', as(db,alice).write(`/users/${alice}/photo`, null), true);
+t('[هجوم] users: صورة من موقع خارجي', as(db,alice).write(`/users/${alice}/photo`, 'https://evil.example/p.png'), false);
+t('[هجوم] users: صورة javascript:', as(db,alice).write(`/users/${alice}/photo`, 'javascript:alert(1)'), false);
+t('[هجوم] users: صورة نوع data غير صورة', as(db,alice).write(`/users/${alice}/photo`, 'data:text/html;base64,AAAA'), false);
+t('groups: الأدمن يغيّر صورة المجموعة (dataURL)', as(db,alice).write('/groups/g1/photo', DURL+'AAAA'), true);
+t('[هجوم] groups: صورة المجموعة من موقع خارجي', as(db,alice).write('/groups/g1/photo', 'https://evil.example/p.png'), false);
+t('stories: رابط Storage', as(db,alice).write(`/stories/${alice}/s2`, {ts:1,type:'image',url:'https://firebasestorage.googleapis.com/v0/b/b/o/x?alt=media'}), true);
+t('stories: dataURL', as(db,alice).write(`/stories/${alice}/s3`, {ts:1,type:'image',url:DURL+'AAAA'}), true);
+t('[هجوم] stories: رابط خارجي', as(db,alice).write(`/stories/${alice}/s4`, {ts:1,type:'image',url:'https://evil.example/t.gif'}), false);
 
 console.log(`\nالملف: ${which.split('/').pop()}  —  نجح ${pass} / فشل ${fail}`);
 failures.forEach(f=>console.log('  ✗', f));

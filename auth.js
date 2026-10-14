@@ -126,7 +126,7 @@ window.Auth = (function () {
       await FB.set(`users/${uid}`, {
         uid,
         username,
-        email,
+        // الإيميل لا يُخزَّن هنا: users/{uid} مقروء لكل المستخدمين (الإيميل يبقى في Firebase Auth فقط)
         emoji:     '',
         bio:       '',
         photo:     null,
@@ -435,10 +435,11 @@ window.Auth = (function () {
         await FB.set(`users/${uid}`, {
           uid,
           username:  finalUsername,
-          email:     user.email || '',
+          // لا نخزّن الإيميل في قاعدة البيانات (خصوصية) — يبقى في Firebase Auth
           emoji:     '',
           bio:       '',
-          photo:     user.photoURL || null,
+          // قواعد قاعدة البيانات تقبل فقط صور Google (lh*.googleusercontent.com) أو dataURL
+          photo:     /^https:\/\/lh[0-9]+\.googleusercontent\.com\//.test(user.photoURL || '') ? user.photoURL : null,
           createdAt: Date.now(),
           provider:  'google',
         });
@@ -474,9 +475,7 @@ window.Auth = (function () {
       await FB.authReauth(currentEmail, currentPassword);
       // تحديث الإيميل في Firebase Auth
       await FB.authUpdateEmail(newEmail);
-      // تحديث في قاعدة البيانات
-      const uid = FB.authCurrentUser()?.uid;
-      if (uid) await FB.upd(`users/${uid}`, { email: newEmail });
+      // الإيميل يُحفظ في Firebase Auth فقط (لا نسخة في قاعدة البيانات)
       return { ok: true };
     } catch (e) {
       return { error: friendlyError(e.code) };

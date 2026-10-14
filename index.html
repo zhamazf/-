@@ -17,7 +17,8 @@
                                    الحماية من XSS تعتمد على عدم استخدام innerHTML مع بيانات المستخدم)
   - connect-src                  → Firebase Realtime DB + Auth endpoints
   - style-src 'unsafe-inline'    → مطلوب للـ inline styles (شاشة التحميل)
-  - img-src data: blob:          → للصور المحلية
+  - img-src / media-src          → data: blob: + Firebase Storage + صور حسابات Google فقط
+                                   (أي رابط خارجي آخر محجوب: يمنع تتبّع IP المستخدم عبر رسائل فيها روابط)
   ⚠️ إذا أضفت دومينات خارجية لاحقاً (fonts, cdn...) أضفها هنا
   ═══════════════════════════════════════════════════════════════
 -->
@@ -32,9 +33,9 @@
     https://identitytoolkit.googleapis.com
     https://securetoken.googleapis.com;
   style-src 'self' 'unsafe-inline';
-  img-src 'self' data: blob: https:;
+  img-src 'self' data: blob: https://firebasestorage.googleapis.com https://*.googleusercontent.com;
   font-src 'self' data:;
-  media-src 'self' blob: data: https:;
+  media-src 'self' blob: data: https://firebasestorage.googleapis.com;
   worker-src 'self' blob:;
   frame-src https://nabda-chat.firebaseapp.com https://accounts.google.com;
   object-src 'none';

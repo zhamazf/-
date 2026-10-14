@@ -2,7 +2,9 @@
   "name": "nabda-chat",
   "private": true,
   "scripts": {
-    "test": "node tests/files.test.js && node tests/rules.test.js && node tests/e2e.test.js"
+    "test": "node tests/files.test.js && node tests/rules.test.js && node tests/e2e.test.js && node tests/listeners.test.js && node tests/smoke.test.js"
   },
-  "devDependencies": { "targaryen": "^3.1.0" }
+  "devDependencies": {
+    "targaryen": "^3.1.0"
+  }
 }

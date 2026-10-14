@@ -1,0 +1,29 @@
+// قواعد Firebase Storage لتطبيق نبضة
+// المسار الذي يبنيه التطبيق (FB.storagePath):  {folder}/{uid}/{timestamp_random.ext}
+//   folder = images | videos | voices | stories
+//
+// ما تفعله القواعد:
+//  - القراءة: للمسجّلين فقط.
+//  - الرفع: صاحب الـ uid فقط، داخل المجلدات المعروفة، أقل من 10MB، صور/فيديو/صوت فقط (بدون SVG).
+//  - الحذف: صاحب الملف فقط.
+//  - التعديل (استبدال ملف موجود): ممنوع.
+//  - أي مسار آخر: مرفوض تلقائياً.
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{folder}/{uid}/{file} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+                    && request.auth.uid == uid
+                    && folder in ['images', 'videos', 'voices', 'stories']
+                    && request.resource.size < 10 * 1024 * 1024
+                    && request.resource.contentType.matches('(image|video|audio)/.*')
+                    && !request.resource.contentType.matches('image/svg.*');
+
+      allow delete: if request.auth != null && request.auth.uid == uid;
+
+      allow update: if false;
+    }
+  }
+}

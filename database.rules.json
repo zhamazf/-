@@ -13,6 +13,12 @@
           "$gid": {
             ".write": "auth !== null && ($uid === auth.uid || root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
           }
+        },
+        "email": {
+          ".validate": false
+        },
+        "photo": {
+          ".validate": "newData.isString() && newData.val().length < 6000000 && (newData.val().beginsWith('data:image/') || newData.val().beginsWith('https://firebasestorage.googleapis.com/') || newData.val().matches(/^https:\\/\\/lh[0-9]+\\.googleusercontent\\.com\\/.*/))"
         }
       }
     },
@@ -76,11 +82,25 @@
     "dmMsgs": {
       "$dmKey": {
         ".read": "auth !== null && $dmKey.contains(auth.uid)",
-        ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists()",
+        ".write": "auth !== null && $dmKey.contains(auth.uid) && !newData.exists()",
         "$msgId": {
-          ".validate": "newData.hasChildren(['sender','ts']) && (data.exists() || newData.child('sender').val() === auth.uid)",
+          ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists() && ((!data.exists() && newData.child('sender').val() === auth.uid) || (data.exists() && data.child('sender').val() === auth.uid))",
+          ".validate": "newData.hasChildren(['sender','ts']) && (data.exists() ? newData.child('sender').val() === data.child('sender').val() : newData.child('sender').val() === auth.uid)",
+          "status": {
+            ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists() && data.parent().exists() && data.parent().child('sender').val() !== auth.uid",
+            ".validate": "newData.isString() && (newData.val() === 'sent' || newData.val() === 'delivered' || newData.val() === 'read')"
+          },
+          "reactions": {
+            "$emoji": {
+              ".validate": "$emoji.length <= 16",
+              "$rUid": {
+                ".write": "auth !== null && $dmKey.contains(auth.uid) && !root.child('blockedUsers').child($dmKey.replace(auth.uid, '').replace('_', '')).child(auth.uid).exists() && $rUid === auth.uid",
+                ".validate": "newData.val() === true"
+              }
+            }
+          },
           "$f": {
-            ".validate": "!newData.isString() || (($f === 'url' || $f === 'data') ? newData.val().length < 9000000 : newData.val().length < 5000)",
+            ".validate": "!newData.isString() || (($f === 'url' || $f === 'data') ? (newData.val().length < 9000000 && (newData.val().beginsWith('data:') || ($f === 'url' && newData.val().beginsWith('https://firebasestorage.googleapis.com/')))) : newData.val().length < 5000)",
             "$g": {
               ".validate": "!newData.isString() || newData.val().length < 12000000",
               "$h": {
@@ -117,7 +137,8 @@
           ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
         },
         "photo": {
-          ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
+          ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())",
+          ".validate": "newData.isString() && newData.val().length < 600000 && newData.val().beginsWith('data:image/')"
         },
         "description": {
           ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())"
@@ -127,11 +148,21 @@
     "groupMsgs": {
       "$gid": {
         ".read": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
-        ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists()",
+        ".write": "auth !== null && root.child('groups').child($gid).child('admin').val() === auth.uid && !newData.exists()",
         "$msgId": {
-          ".validate": "newData.hasChildren(['sender','ts']) && (data.exists() || newData.child('sender').val() === auth.uid)",
+          ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists() && ((!data.exists() && newData.child('sender').val() === auth.uid) || (data.exists() && data.child('sender').val() === auth.uid))",
+          ".validate": "newData.hasChildren(['sender','ts']) && (data.exists() ? newData.child('sender').val() === data.child('sender').val() : newData.child('sender').val() === auth.uid)",
+          "reactions": {
+            "$emoji": {
+              ".validate": "$emoji.length <= 16",
+              "$rUid": {
+                ".write": "auth !== null && root.child('groups').child($gid).child('members').child(auth.uid).exists() && $rUid === auth.uid",
+                ".validate": "newData.val() === true"
+              }
+            }
+          },
           "$f": {
-            ".validate": "!newData.isString() || (($f === 'url' || $f === 'data') ? newData.val().length < 9000000 : newData.val().length < 5000)",
+            ".validate": "!newData.isString() || (($f === 'url' || $f === 'data') ? (newData.val().length < 9000000 && (newData.val().beginsWith('data:') || ($f === 'url' && newData.val().beginsWith('https://firebasestorage.googleapis.com/')))) : newData.val().length < 5000)",
             "$g": {
               ".validate": "!newData.isString() || newData.val().length < 12000000",
               "$h": {
@@ -224,7 +255,12 @@
     "stories": {
       ".read": "auth !== null",
       "$uid": {
-        ".write": "$uid === auth.uid"
+        ".write": "$uid === auth.uid",
+        "$sid": {
+          "url": {
+            ".validate": "newData.isString() && newData.val().length < 9000000 && (newData.val().beginsWith('data:') || newData.val().beginsWith('https://firebasestorage.googleapis.com/'))"
+          }
+        }
       }
     },
     "storyViews": {
