@@ -28,6 +28,7 @@ setTimeout(() => {
   must('لا استماع لـ presence كاملة', !calls.includes('on:presence'));
   must('لا استماع لـ typing كاملة', !calls.includes('on:typing'));
   must('presence لي', calls.includes('on:presence/u1'));
+  must('إشعاراتي', calls.includes('on:notifications/u1'));
   must('presence لصديق', calls.includes('on:presence/f1'));
   must('presence لعضو مجموعة', calls.includes('on:presence/m2'));
   must('رسائل المجموعة بحد 60', calls.includes('onLimit:groupMsgs/g1:60') && !calls.includes('on:groupMsgs/g1'));

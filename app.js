@@ -52,6 +52,8 @@
     stories:      {},
     presence:     {},
     friendReqs:   {},                  // uid-keyed
+    notifs:       {},                  // notifications/{me}
+    unreadNotifs: 0,
     typingMap:    {},
     msgs:         [],
     panel:        false,
@@ -276,7 +278,7 @@
       // تنظيف مرة واحدة: إزالة الإيميل القديم من البروفايل العام (كان مقروءاً لكل المستخدمين)
       if (v && v.email !== undefined && !S._emailPurged) { S._emailPurged = true; try { FB.del(`users/${S.meUid}/email`).catch(()=>{}); } catch(e){} }
       S.users[S.meUid]=v||{}; rebuildUserMaps(); refreshDyn();
-      _startDmListeners(); _startFriendReqListener(); _startStoryListeners();
+      _startDmListeners(); _startFriendReqListener(); _startNotifListener(); _startStoryListeners();
       _startGroupListeners(); _startFriendProfileListeners();
     }));
     // groups: لا نقرأ /groups كاملاً — بدلاً نستمع per-group في _startGroupListeners()
@@ -367,6 +369,88 @@
 
   // ── friendRequests listener — uid فقط (Rules: $targetUid === auth.uid) ──
   let _friendReqUnsub = null;
+  /* ═══════════════════════════════════════════════════════════
+     الإشعارات داخل التطبيق: شارة على الجرس + لوحة (DOM فقط، بلا innerHTML)
+     البيانات: notifications/{me}/{nid} = { type, ts, read, fromUid|byUid, gid?, gname? }
+  ═══════════════════════════════════════════════════════════ */
+  let _notifUnsub = null, _notifPanel = null, _notifDocHandler = null;
+  function _startNotifListener() {
+    if (!S.meUid || _notifUnsub) return;
+    _notifUnsub = FB.on(`notifications/${S.meUid}`, v => {
+      S.notifs = v || {};
+      S.unreadNotifs = Object.values(S.notifs).filter(n => n && !n.read).length;
+      _updateNotifBadge();
+      if (_notifPanel) _fillNotifPanel();
+    });
+    addU(() => { if (_notifUnsub) { _notifUnsub(); _notifUnsub = null; } S.notifs = {}; S.unreadNotifs = 0; _closeNotifPanel(); });
+  }
+  function _updateNotifBadge(el) {
+    const btn = el || document.getElementById('notif-bell'); if (!btn) return;
+    let b = btn.querySelector('.notif-badge'); const n = S.unreadNotifs || 0;
+    if (n <= 0) { if (b) b.remove(); return; }
+    if (!b) {
+      b = UI.el('span', 'position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 3px;background:#ef4444;color:#fff;border-radius:8px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:none');
+      b.className = 'notif-badge'; btn.appendChild(b);
+    }
+    b.textContent = n > 99 ? '99+' : String(n);
+  }
+  function _notifText(n) {
+    const nm = uid => (S.users[uid] && S.users[uid].username) || 'مستخدم';
+    if (n.type === 'friend_request') return `📨 طلب صداقة من ${nm(n.fromUid)}`;
+    if (n.type === 'friend_accept')  return `✅ قَبِل ${nm(n.fromUid)} طلب صداقتك`;
+    if (n.type === 'group_add')      return `👥 أضافك ${nm(n.byUid)} إلى «${n.gname || 'مجموعة'}»`;
+    return '🔔 إشعار';
+  }
+  function _notifAgo(ts) {
+    const d = Date.now() - (ts || 0);
+    if (d < 60000) return 'الآن';
+    if (d < 3600000) return `قبل ${Math.floor(d / 60000)} د`;
+    if (d < 86400000) return `قبل ${Math.floor(d / 3600000)} س`;
+    return new Date(ts).toLocaleDateString('ar');
+  }
+  function _markNotifsRead(ids) {
+    const u = {}; ids.forEach(id => { u[`notifications/${S.meUid}/${id}/read`] = true; });
+    if (Object.keys(u).length) FB.upd('/', u).catch(() => {});
+  }
+  function _closeNotifPanel() {
+    if (_notifPanel) { _notifPanel.remove(); _notifPanel = null; }
+    if (_notifDocHandler) { document.removeEventListener('click', _notifDocHandler); _notifDocHandler = null; }
+  }
+  function _fillNotifPanel() {
+    if (!_notifPanel) return;
+    const t = th(); _notifPanel.textContent = '';
+    const hdr = UI.el('div', `display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid ${t.border};font-weight:700;font-size:13px;color:${t.text}`);
+    const title = UI.el('span', ''); title.textContent = 'الإشعارات';
+    const all = UI.el('button', 'border:none;background:transparent;color:#6366f1;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit');
+    all.textContent = 'تعليم الكل كمقروء';
+    all.addEventListener('click', () => _markNotifsRead(Object.keys(S.notifs).filter(k => S.notifs[k] && !S.notifs[k].read)));
+    hdr.appendChild(title); hdr.appendChild(all); _notifPanel.appendChild(hdr);
+    const list = UI.el('div', 'padding:6px 8px');
+    const items = Object.entries(S.notifs).filter(([, n]) => n).sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0));
+    if (!items.length) { const e = UI.el('div', `padding:24px;text-align:center;color:${t.text3};font-size:13px`); e.textContent = 'لا إشعارات حالياً'; list.appendChild(e); }
+    items.forEach(([nid, n]) => {
+      const row = UI.el('div', `display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;margin-bottom:4px;background:${n.read ? 'transparent' : 'rgba(99,102,241,.1)'}`);
+      const body = UI.el('div', 'flex:1;min-width:0;cursor:pointer');
+      const tx = UI.el('div', `font-size:13px;color:${t.text};line-height:1.5`); tx.textContent = _notifText(n);
+      const tm = UI.el('div', `font-size:11px;color:${t.text3};margin-top:2px`); tm.textContent = _notifAgo(n.ts);
+      body.appendChild(tx); body.appendChild(tm);
+      body.addEventListener('click', () => { if (!n.read) _markNotifsRead([nid]); });
+      const del = UI.el('button', `border:none;background:transparent;color:${t.text3};font-size:15px;cursor:pointer;padding:2px 6px;flex-shrink:0;font-family:inherit`);
+      del.textContent = '✕'; del.setAttribute('aria-label', 'حذف');
+      del.addEventListener('click', () => { FB.del(`notifications/${S.meUid}/${nid}`).catch(() => {}); });
+      row.appendChild(body); row.appendChild(del); list.appendChild(row);
+    });
+    _notifPanel.appendChild(list);
+  }
+  function _toggleNotifPanel() {
+    if (_notifPanel) { _closeNotifPanel(); return; }
+    const t = th();
+    _notifPanel = UI.el('div', `position:fixed;top:56px;inset-inline-end:10px;width:min(320px,calc(100vw - 20px));max-height:70vh;overflow-y:auto;background:${t.card};border:1px solid ${t.border};border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.25);z-index:9999;direction:rtl`);
+    _fillNotifPanel(); document.body.appendChild(_notifPanel);
+    _notifDocHandler = e => { if (_notifPanel && !_notifPanel.contains(e.target) && !e.target.closest('#notif-bell')) _closeNotifPanel(); };
+    setTimeout(() => { if (_notifDocHandler) document.addEventListener('click', _notifDocHandler); }, 0);
+  }
+
   function _startFriendReqListener() {
     if (!S.meUid || _friendReqUnsub) return;
     _friendReqUnsub = FB.on(`friendRequests/${S.meUid}`, v => {
@@ -697,6 +781,8 @@
     const fBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:20px;padding:4px;position:relative'); fBtn.textContent='👥'; fBtn.setAttribute('aria-label','الأصدقاء');
     const pr=pendingReqs(); if(pr.length){const d=UI.el('div','position:absolute;top:0;right:0;background:#ef4444;color:#fff;font-size:8px;font-weight:700;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center');d.textContent=pr.length;fBtn.appendChild(d);}
     fBtn.addEventListener('click',()=>go('friends')); bar.appendChild(fBtn);
+    const nBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:20px;padding:4px;position:relative'); nBtn.id='notif-bell'; nBtn.textContent='🔔'; nBtn.setAttribute('aria-label','الإشعارات');
+    nBtn.addEventListener('click',_toggleNotifPanel); bar.appendChild(nBtn); _updateNotifBadge(nBtn);
     const dBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:20px;padding:4px');
     dBtn.textContent=UI.isDark()?'☀️':'🌙'; dBtn.setAttribute('aria-label',UI.isDark()?'تفعيل الوضع الفاتح':'تفعيل الوضع الداكن'); dBtn.addEventListener('click',()=>{UI.toggleDark();S.dark=UI.isDark();renderScreen();}); bar.appendChild(dBtn);
     return bar;
