@@ -124,7 +124,7 @@
   const _historyStack = [];
 
   function go(screen, id=null) {
-    if (S.screen==='dm'||S.screen==='group') Chat.clearTyping(S.me, S.activeId, S.screen);
+    if (S.screen==='dm'||S.screen==='group') Chat.clearTyping(S.me, chatId(), S.screen);
     stopMsgListener();
     _seenMsgIds.clear();
     _replyTo = null; // v2: reset reply state on navigation
@@ -152,7 +152,7 @@
     if (prev && prev.screen && prev.screen !== 'auth') {
       // Replay without pushing new history state
       const {screen, id} = prev;
-      if (S.screen==='dm'||S.screen==='group') Chat.clearTyping(S.me, S.activeId, S.screen);
+      if (S.screen==='dm'||S.screen==='group') Chat.clearTyping(S.me, chatId(), S.screen);
       stopMsgListener();
       _seenMsgIds.clear();
       S.screen=screen; S.activeId=id; S.panel=false; S.groupEdit=false; S.msgs=[];
@@ -218,7 +218,12 @@
           });
           _prevLen=msgs.length; S.msgs=msgs;
         }
-        if (type==='dm') { const _t=_uidByName(id)||id; Chat.markRead(Chat.dmKey(S.meUid,_t), S.meUid); }
+        if (type==='dm') {
+          const _t=_uidByName(id)||id, _k=Chat.dmKey(S.meUid,_t);
+          // المحادثة مفتوحة وظاهرة = قُرئت؛ وإلا وصلت فقط (تظهر ✓✓ عند المرسل)
+          if (document.visibilityState==='visible') Chat.markMsgsRead(_k, msgs, S.meUid);
+          else { Chat.markDelivered(_k, msgs, S.meUid); Chat.markRead(_k, S.meUid); }
+        }
       } catch (err) {
         console.error('[startMsgListener] error:', err);
         UI.toast('خطأ في تحديث الرسائل','error');
@@ -234,7 +239,7 @@
         _refreshPinnedBar();
       });
       // مؤشر الكتابة: نستمع لمسار المحادثة المفتوحة فقط (بدل شجرة typing كاملة لكل المحادثات)
-      const _tKey  = type==='dm' ? Chat.dmKey(S.me, id) : id;
+      const _tKey  = type==='dm' ? Chat.dmKey(S.meUid, _uidByName(id)||id) : id;
       const _tPath = type==='dm' ? `typing/dm/${_tKey}` : `typing/group/${id}`;
       _typingUnsub = FB.on(_tPath, v => {
         S.typingMap = type==='dm' ? { dm: { [_tKey]: v || {} } } : { group: { [_tKey]: v || {} } };
@@ -279,7 +284,7 @@
       if (v && v.email !== undefined && !S._emailPurged) { S._emailPurged = true; try { FB.del(`users/${S.meUid}/email`).catch(()=>{}); } catch(e){} }
       S.users[S.meUid]=v||{}; rebuildUserMaps(); refreshDyn();
       _startDmListeners(); _startFriendReqListener(); _startNotifListener(); _startStoryListeners();
-      _startGroupListeners(); _startFriendProfileListeners();
+      _startGroupListeners(); _startFriendProfileListeners(); _pruneFriendListeners();
     }));
     // groups: لا نقرأ /groups كاملاً — بدلاً نستمع per-group في _startGroupListeners()
     // يُستدعى من rebuildUserMaps بعد تحميل users
@@ -476,6 +481,22 @@
     });
   }
 
+  // عند إزالة صديق: ألغِ مستمعي محادثته وقصصه (كانت تبقى شغّالة طوال الجلسة)
+  function _pruneFriendListeners() {
+    const fr = Object.keys(S.users[S.meUid]?.friends || {});
+    Object.keys(_dmUnsubs).forEach(k => {
+      const base = k.startsWith('_rr_') ? k.slice(4) : k;
+      if (fr.some(f => base.includes(f))) return;
+      try { _dmUnsubs[k](); } catch (e) {}
+      delete _dmUnsubs[k]; delete _dmRaw[base];
+    });
+    Object.keys(_storyUnsubs).forEach(uid => {
+      if (uid === S.meUid || fr.includes(uid)) return;
+      try { _storyUnsubs[uid](); } catch (e) {}
+      delete _storyUnsubs[uid]; delete S.stories[uid];
+    });
+  }
+
   // ── Groups listeners — استمع لـ users/{meUid}/groups ثم لكل مجموعة ──
   const _groupUnsubs = {};
   let _groupIndexUnsub = null;
@@ -560,7 +581,7 @@
     if (S.screen==='dm'&&S.activeId) refreshTopSub();
   }
   function refreshTyping() {
-    const tu=Chat.getTypingUsers(S.typingMap,S.me,S.activeId,S.screen);
+    const tu=Chat.getTypingUsers(S.typingMap,S.me,chatId(),S.screen);
     const box=document.getElementById('typing-row'); if(!box) return;
     if (tu.length>0) {
       box.style.display='flex'; box.innerHTML='';
@@ -577,7 +598,7 @@
   }
   function refreshTopSub() {
     const sub=document.getElementById('topbar-sub'); if(!sub||!S.activeId) return;
-    const tu=Chat.getTypingUsers(S.typingMap,S.me,S.activeId,S.screen);
+    const tu=Chat.getTypingUsers(S.typingMap,S.me,chatId(),S.screen);
     if (S.screen==='dm') {
       const targetUid = _uidByName(S.activeId);
       sub.textContent = tu.includes(targetUid)||tu.includes(S.activeId) ? '✍️ يكتب...' : Chat.lastSeenText(S.presence, targetUid || S.activeId);
@@ -1109,11 +1130,9 @@
 
   /* ── Status helpers ──────────────────────────────────────── */
   function _statusText(m) {
-    if (m.sender !== S.me) return '';
-    if (m.readBy) return '✓✓';       // read receipt (blue in CSS)
-    if (m.delivered) return '✓✓';    // delivered
+    if (m.sender !== S.meUid && m.sender !== S.me) return '';
     if (m._pending) return '⏳';      // pending / retrying
-    return '✓';                       // sent
+    return Chat.statusText(m);        // ✓ مرسلة / ✓✓ وصلت / ✓✓🔵 قُرئت (حقل status)
   }
 
   /* ═══════════════════════════════════════════════════════════
@@ -1352,6 +1371,7 @@
 
     const bubRadius=m.replyTo?(mine?'0 18px 4px 18px':'18px 0 18px 18px'):(mine?'18px 18px 4px 18px':'18px 18px 18px 4px');
     const bub=UI.el('div','');
+    bub.className='bubble '+(mine?'mine':'theirs');
     bub.style.cssText=`padding:${isM?'5px':'9px 13px'};border-radius:${bubRadius};background:${mine?bc:th().bubble};color:${mine?'#fff':th().text};font-size:14px;line-height:1.5;box-shadow:${mine?'0 2px 8px rgba(99,102,241,.25)':'0 1px 4px rgba(0,0,0,.08)'}`;
     bub.setAttribute('data-msg-id', m.id);
 
@@ -1616,12 +1636,12 @@
       const text = inputEl.value;
       if (!text || !text.trim()) {
         clearTimeout(typTimer);
-        Chat.setTyping(S.me,S.activeId,S.screen,false);
+        Chat.setTyping(S.me,chatId(),S.screen,false);
         return;
       }
-      Chat.setTyping(S.me,S.activeId,S.screen,true);
+      Chat.setTyping(S.me,chatId(),S.screen,true);
       clearTimeout(typTimer);
-      typTimer=setTimeout(()=>Chat.setTyping(S.me,S.activeId,S.screen,false),2500);
+      typTimer=setTimeout(()=>Chat.setTyping(S.me,chatId(),S.screen,false),2500);
     });
 
     const doSend=()=>{
@@ -1629,7 +1649,7 @@
       const now=Date.now(); if(now-_lastSend<SPAM){UI.toast('لا تُرسل بسرعة كبيرة ⏳','warn');return;} _lastSend=now;
       cdBar.style.display='block'; cdFill.style.animation='none'; cdFill.offsetHeight; cdFill.style.animation=`cooldown ${SPAM}ms linear forwards`; setTimeout(()=>cdBar.style.display='none',SPAM);
       inputEl.value=''; inputEl.style.height='40px'; inputEl.focus();
-      Chat.setTyping(S.me,S.activeId,S.screen,false); clearTimeout(typTimer);
+      Chat.setTyping(S.me,chatId(),S.screen,false); clearTimeout(typTimer);
       const tempId='tmp_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
       // v2: أضف replyTo للـ payload إن وُجد
       const payload={type:'text',text,_tempId:tempId};

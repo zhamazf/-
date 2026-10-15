@@ -254,14 +254,14 @@
       }
     },
     "stories": {
-      ".read": "auth !== null",
       "$uid": {
         ".write": "$uid === auth.uid",
         "$sid": {
           "url": {
             ".validate": "newData.isString() && newData.val().length < 9000000 && (newData.val().beginsWith('data:') || newData.val().beginsWith('https://firebasestorage.googleapis.com/'))"
           }
-        }
+        },
+        ".read": "auth !== null && ($uid === auth.uid || root.child('users').child($uid).child('friends').child(auth.uid).exists())"
       }
     },
     "storyViews": {

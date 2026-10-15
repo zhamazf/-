@@ -97,7 +97,9 @@ window.Chat = (function () {
     const E = _E2E();
     if (E) {
       let peerHasKey = false;
-      try { peerHasKey = !!(await E.getPeerKey(target, true)); } catch (e) { peerHasKey = false; }
+      // تعذّر معرفة مفاتيح الطرف الآخر ≠ لا يملك مفتاحاً: نوقف الإرسال بدل التخفيض الصامت لنص صريح
+      try { peerHasKey = !!(await E.getPeerKey(target, true)); }
+      catch (e) { const er = new Error('e2e_keys_unavailable'); er.code = 'E2E_NOT_READY'; throw er; }
       if (peerHasKey) {
         // الطرف الآخر يملك مفتاحاً: ممنوع الإرسال كنص صريح (لا تخفيض صامت للتشفير)
         if (!E.isReady()) { const er = new Error('e2e_not_ready'); er.code = 'E2E_NOT_READY'; throw er; }
@@ -372,7 +374,8 @@ window.Chat = (function () {
   async function _decryptFor(path, msgs) {
     const k = _dmKeyOfPath(path), E = _E2E();
     if (!k || !E || !msgs || !msgs.some(m => m && m.e2e)) return msgs;
-    try { return await E.decryptList(k, msgs); } catch (e) { return msgs; }
+    try { return await E.decryptList(k, msgs); }
+    catch (e) { return msgs.map(m => (m && m.e2e) ? Object.assign({}, m, { e2e: undefined, type: 'text', text: '🔒 رسالة مشفّرة', _undecryptable: true, _enc: true }) : m); }
   }
 
   function _listen(path, cb) {
@@ -531,10 +534,11 @@ window.Chat = (function () {
     if (_activeTypingPath) FB.del(_activeTypingPath);
   });
 
+  // activeId: للـ dm مفتاح المحادثة (dmKey من uid الطرفين) وللمجموعة gid؛ me: اسم المستخدم (اسم العقدة)
   function setTyping(me, activeId, screen, isTyping) {
     if (!activeId || !me) return;
     const path = screen === 'dm'
-      ? `typing/dm/${dmKey(me, activeId)}/${me}`
+      ? `typing/dm/${activeId}/${me}`
       : `typing/group/${activeId}/${me}`;
 
     if (isTyping) {
@@ -553,14 +557,14 @@ window.Chat = (function () {
     if (!me || !activeId) return;
     clearTimeout(_typingTimer);
     const path = screen === 'dm'
-      ? `typing/dm/${dmKey(me, activeId)}/${me}`
+      ? `typing/dm/${activeId}/${me}`
       : `typing/group/${activeId}/${me}`;
     FB.del(path);
   }
 
   function getTypingUsers(typingMap, me, activeId, screen) {
     if (!activeId || !me) return [];
-    const key = screen === 'dm' ? dmKey(me, activeId) : activeId;
+    const key = activeId;   // dm: مفتاح المحادثة المبني من uid الطرفين (يمرّره app.js عبر chatId())
     const obj  = screen === 'dm'
       ? (typingMap?.dm?.[key]         || {})
       : (typingMap?.group?.[activeId] || {});

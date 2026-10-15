@@ -154,7 +154,8 @@ window.E2E = (function () {
       const c = _devCache.get(uid);
       if (c && !fresh && Date.now() - c.t < 10000) return c.v;
       let v;
-      try { v = await _fetchDevices(uid); } catch (e) { v = c ? c.v : []; }
+      // fresh (مسارات التشفير): فشل الجلب يُرفع كخطأ — ممنوع اعتباره «لا أجهزة» وإلا يُرسل النص بلا تشفير
+      try { v = await _fetchDevices(uid); } catch (e) { if (fresh) throw e; v = c ? c.v : []; }
       _devCache.set(uid, { t: Date.now(), v });
       return v;
     }

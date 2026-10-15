@@ -194,7 +194,7 @@ t('typing: كتابة', as(db,alice).write('/typing/dm/'+dm(alice,bob)+'/ali', t
 t('typing: قراءة محادثتي', as(db,alice).read('/typing/dm/'+dm(alice,bob)), true);
 t('readReceipts: كتابة طابعي', as(db,alice).write(`/readReceipts/k/${alice}`, 5), true);
 t('[هجوم] readReceipts: طابع غيري', as(db,mal).write(`/readReceipts/k/${alice}`, 5), false);
-t('stories: قراءة الكل', as(db,alice).read('/stories'), true);
+t('stories: سرد الجذر ممنوع (لا قراءة شاملة)', as(db,alice).read('/stories'), false);
 t('stories: كتابة قصتي', as(db,alice).write(`/stories/${alice}/s1`, {ts:1}), true);
 t('[هجوم] stories: قصة باسم غيري', as(db,mal).write(`/stories/${alice}/s1`, {ts:1}), false);
 
@@ -364,6 +364,14 @@ t('[هجوم] notif: نوع غير معروف', as(db,alice).write('/notificatio
 t('[بدون دخول] notif: كتابة', as(db,null).write('/notifications/'+bob+'/n12', N('friend_accept',{fromUid:alice})), false);
 t('notif: صاحب الحساب يحذف إشعاره', as(mk({notifications:{[bob]:{n0:N('friend_accept',{fromUid:alice})}}}),bob).write('/notifications/'+bob+'/n0', null), true);
 t('[هجوم] notif: غريب يحذف إشعار غيره', as(mk({notifications:{[bob]:{n0:N('friend_accept',{fromUid:alice})}}}),mal).write('/notifications/'+bob+'/n0', null), false);
+
+/* ── stories: القراءة لصاحبها وأصدقائه فقط ── */
+const SD=mk({stories:{[alice]:{s1:{ts:1,type:'image',url:DURL+'AA'}}}});
+t('stories: صاحبها يقرأ', as(SD,alice).read('/stories/'+alice), true);
+t('stories: صديق يقرأ', as(SD,bob).read('/stories/'+alice), true);
+t('[خصوصية] stories: غير صديق لا يقرأ', as(SD,mal).read('/stories/'+alice), false);
+t('[خصوصية] stories: سرد الجذر ممنوع', as(SD,bob).read('/stories'), false);
+t('[بدون دخول] stories: قراءة', as(SD,null).read('/stories/'+alice), false);
 
 console.log(`\nالملف: ${which.split('/').pop()}  —  نجح ${pass} / فشل ${fail}`);
 failures.forEach(f=>console.log('  ✗', f));
