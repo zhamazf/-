@@ -215,7 +215,7 @@ window.E2E = (function () {
       const hk = await subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
       const k = await subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: enc.encode('nabda-e2e-v2-wrap|' + dmKey) },
         hk, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-      _kekCache.set(ck, k);
+      _kekCache.set(ck, k); if (_kekCache.size > 300) _kekCache.delete(_kekCache.keys().next().value);
       return k;
     }
     const _aad = (dmKey, senderUid) => enc.encode(`${dmKey}|${senderUid}`);
@@ -277,7 +277,7 @@ window.E2E = (function () {
       const ckKey = await subtle.importKey('raw', rawCk, 'AES-GCM', false, ['decrypt']);
       const pt = await subtle.decrypt({ name: 'AES-GCM', iv: unb64(e.iv), additionalData: _aad(dmKey, m.sender) }, ckKey, unb64(e.ct));
       const bundle = JSON.parse(dec.decode(pt));
-      if (m.id) _msgCache.set(ck, bundle);
+      if (m.id) { _msgCache.set(ck, bundle); if (_msgCache.size > 500) _msgCache.delete(_msgCache.keys().next().value); }
       return bundle;
     }
 

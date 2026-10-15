@@ -36,8 +36,9 @@ window.FB = (function () {
     return new Promise((resolve, reject) => {
       const s   = document.createElement('script');
       s.src     = src;
-      s.onload  = resolve;
-      s.onerror = () => reject(new Error('Failed to load: ' + src));
+      const to  = setTimeout(() => reject(new Error('Timeout loading: ' + src)), 15000);   // شبكة معلّقة لا تبقي شاشة التحميل للأبد
+      s.onload  = () => { clearTimeout(to); resolve(); };
+      s.onerror = () => { clearTimeout(to); reject(new Error('Failed to load: ' + src)); };
       document.head.appendChild(s);
     });
   }

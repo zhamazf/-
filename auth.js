@@ -332,6 +332,8 @@ window.Auth = (function () {
       deletes.push(FB.del(`userDevices/${uid}`));
       deletes.push(FB.del(`userData/${uid}`));
       deletes.push(FB.del(`friendRequests/${uid}`));
+      deletes.push(FB.del(`notifications/${uid}`));
+      deletes.push(FB.del(`storyViews/${uid}`));
       // مسارات قديمة (للتوافق إن وُجدت)
       deletes.push(FB.del(`presence/${username}`));
       deletes.push(FB.del(`friendRequests/${username}`));
@@ -342,6 +344,7 @@ window.Auth = (function () {
       dmPartners.forEach(partnerUid => {
         const dmKey = [uid, partnerUid].sort().join('_');
         deletes.push(FB.del(`dmMsgs/${dmKey}`));
+        deletes.push(FB.del(`readReceipts/${dmKey}/${uid}`));   // إيصال القراءة الخاص بي
         // حذف الصداقة في الاتجاهين
         deletes.push(FB.del(`users/${uid}/friends/${partnerUid}`));
         deletes.push(FB.del(`users/${partnerUid}/friends/${uid}`));

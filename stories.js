@@ -95,7 +95,7 @@ window.Stories = (function () {
 
     // فحص عدد القصص الحالية
     const current = await FB.get(`stories/${me}`);
-    const count   = current ? Object.keys(current).length : 0;
+    const count   = current ? Object.values(current).filter(x => x && Date.now() - (x.ts || 0) <= STORY_TTL).length : 0;   // المنتهية لا تُحتسب
     if (count >= MAX_STORIES)
       return { error: `الحد الأقصى ${MAX_STORIES} قصص — احذف قصة قديمة أولاً` };
 
@@ -127,7 +127,7 @@ window.Stories = (function () {
     // v6: حذف ملف Storage المرتبط قبل حذف الـ node
     try {
       const story = await FB.get(`stories/${me}/${sid}`);
-      if (story?.storagePath) FB.deleteFile(story.storagePath);
+      if (story?.storagePath) await FB.deleteFile(story.storagePath).catch(() => {});
     } catch {}
     await FB.del(`stories/${me}/${sid}`);
     return { ok: true };
@@ -172,7 +172,11 @@ window.Stories = (function () {
     if (!expired.length) return;
     // حذف بالتوازي مع تجاهل الأخطاء
     Promise.allSettled(
-      expired.map(sid => FB.del(`stories/${meUid}/${sid}`))
+      expired.map(sid => {
+        const sp = myStories[sid] && myStories[sid].storagePath;   // لا نترك ملفاً يتيماً في Storage
+        if (sp) { try { FB.deleteFile(sp).catch(() => {}); } catch (e) {} }
+        return FB.del(`stories/${meUid}/${sid}`);
+      })
     );
   }
 
@@ -209,7 +213,7 @@ window.Stories = (function () {
       return { error: `الفيديو كبير جداً — الحد الأقصى ${Math.round(MAX_VIDEO_SIZE/1024/1024)}MB` };
 
     const current = await FB.get(`stories/${me}`);
-    const count   = current ? Object.keys(current).length : 0;
+    const count   = current ? Object.values(current).filter(x => x && Date.now() - (x.ts || 0) <= STORY_TTL).length : 0;   // المنتهية لا تُحتسب
     if (count >= MAX_STORIES)
       return { error: `الحد الأقصى ${MAX_STORIES} قصص — احذف قصة قديمة أولاً` };
 
@@ -243,7 +247,7 @@ window.Stories = (function () {
       return { error: `النص طويل جداً (${MAX_TEXT_LEN} حرفاً كحد أقصى)` };
 
     const current = await FB.get(`stories/${me}`);
-    const count   = current ? Object.keys(current).length : 0;
+    const count   = current ? Object.values(current).filter(x => x && Date.now() - (x.ts || 0) <= STORY_TTL).length : 0;   // المنتهية لا تُحتسب
     if (count >= MAX_STORIES)
       return { error: `الحد الأقصى ${MAX_STORIES} قصص — احذف قصة قديمة أولاً` };
 
