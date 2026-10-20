@@ -91,6 +91,17 @@
   const _nameByUid = uid  => S.users[uid]?.username || uid;
   const _userData  = name => S.usersByName[name] || null;
 
+  // الخصوصية: تفضيلات المستخدم الحالي + من يُسمح له بمراسلتي (تطبيق على جهة العميل فقط)
+  const _isFriendUid = uid => !!((S.users[S.meUid]?.friends||{})[uid] || (S.users[uid]?.friends||{})[S.meUid]);
+  Chat.setPrivacyProviders(
+    () => (S.users[S.meUid]?.prefs || {}),
+    uid => {
+      if (!uid || uid === S.meUid) return true;
+      const wm = S.users[uid]?.prefs?.whoMessage;
+      return wm !== 'friends' || _isFriendUid(uid);
+    }
+  );
+
   /* ═══════════════════════════════════════════════════════════
      COMPUTED
   ═══════════════════════════════════════════════════════════ */
@@ -1849,6 +1860,12 @@
       const pending = _pendingMsgs.get(tempId);
       if (!pending) return;
       // رفض صلاحيات (مثلاً الطرف الآخر حظرك): لا فائدة من إعادة المحاولة
+      if (err && err.code === 'NOT_ALLOWED') {
+        _pendingMsgs.delete(tempId);
+        const el = document.querySelector(`[data-temp-id="${tempId}"]`); if (el) el.remove();
+        UI.toast('هذا المستخدم يستقبل الرسائل من الأصدقاء فقط', 'error');
+        return;
+      }
       if (err && (err.code === 'PERMISSION_DENIED' || /permission[_ ]denied/i.test(err.message || ''))) {
         _pendingMsgs.delete(tempId);
         const el = document.querySelector(`[data-temp-id="${tempId}"]`); if (el) el.remove();
@@ -2454,7 +2471,47 @@
     const btnRow=UI.el('div','display:flex;gap:8px;margin-top:16px');const msgBtn=UI.el('button','flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer');msgBtn.textContent='💬 رسالة';msgBtn.addEventListener('click',()=>go('dm',u));btnRow.appendChild(msgBtn);
     if(!mf.includes(u)&&u!==S.me){const addBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'var(--accent)':'var(--accent)'};font-weight:700;font-size:14px;font-family:inherit;cursor:pointer`);addBtn.textContent='+ صديق';addBtn.addEventListener('click',async()=>{const targetUid2=_uidByName(u);if(!targetUid2)return UI.toast('المستخدم غير موجود','error');const myFriendUids=Object.keys(S.users[S.meUid]?.friends||{});const res=await Friends.sendRequest(S.meUid,targetUid2,S.users,myFriendUids);if(res.error)UI.toast(res.error,'error');else{UI.toast(`تم إرسال طلب صداقة إلى ${u} ✓`,'success');UI.playSound('notif');}});btnRow.appendChild(addBtn);}
     else if(mf.includes(u)){const fr=UI.el('div','flex:1;text-align:center;padding:10px;color:#22c55e;font-size:13px;font-weight:700');fr.textContent='✓ صديق';btnRow.appendChild(fr);}
-    inner.appendChild(btnRow);scroll.appendChild(inner);APP.appendChild(scroll);
+    inner.appendChild(btnRow);
+    // منشورات المستخدم — الحساب الخاص يظهر للأصدقاء فقط
+    const isOwnP = u === S.me;
+    const pUid = uid || (isOwnP ? S.meUid : null);
+    const hiddenP = (userData.prefs||{}).visibility === 'private' && !isOwnP && !mf.includes(u);
+    const pSec = UI.el('div','margin-top:18px;text-align:center');
+    const pTitle = UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:10px;text-align:right`);
+    pTitle.textContent = 'المنشورات';
+    pSec.appendChild(pTitle);
+    if (hiddenP) {
+      const lk = UI.el('div',`padding:14px;text-align:center;background:${th().card2};border-radius:12px;color:${th().text3};font-size:12px;border:1px solid ${th().border}`);
+      lk.textContent = '🔒 الحساب خاص — المنشورات تظهر للأصدقاء فقط';
+      pSec.appendChild(lk);
+    } else if (!pUid) {
+      const em = UI.el('div',`color:${th().text3};font-size:13px;padding:16px 0`);
+      em.textContent = 'لا توجد منشورات';
+      pSec.appendChild(em);
+    } else {
+      const pg = UI.el('div','');
+      pg.textContent = '';
+      const sp = UI.spinner(20); sp.style.margin = '10px auto'; pg.appendChild(sp);
+      pSec.appendChild(pg);
+      FB.get(`userPosts/${pUid}`).then(posts => {
+        if (!pg.isConnected) return;
+        pg.innerHTML = '';
+        if (!posts || !Object.keys(posts).length) {
+          const em = UI.el('div',`color:${th().text3};font-size:13px;padding:16px 0`);
+          em.textContent = 'لا توجد منشورات بعد';
+          pg.appendChild(em); return;
+        }
+        pg.appendChild(_buildPostsGrid(posts));
+      }).catch(() => {
+        if (!pg.isConnected) return;
+        pg.innerHTML = '';
+        const em = UI.el('div',`color:${th().text3};font-size:13px;padding:16px 0`);
+        em.textContent = 'تعذّر تحميل المنشورات';
+        pg.appendChild(em);
+      });
+    }
+    inner.appendChild(pSec);
+    scroll.appendChild(inner);APP.appendChild(scroll);
   }
 
   /* ═══════════════════════════════════════════════════════════
