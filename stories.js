@@ -27,7 +27,7 @@ window.Stories = (function () {
   const MAX_VIDEO_SIZE    = 5 * 1024 * 1024;    // 5MB للفيديو
   const MAX_TEXT_LEN      = 200;                 // حد النص
   const TEXT_BG_COLORS    = [
-    'linear-gradient(135deg,#6366f1,#8b5cf6)',
+    'linear-gradient(135deg,#3b9ef0,#2b7fd4)',
     'linear-gradient(135deg,#ec4899,#f43f5e)',
     'linear-gradient(135deg,#f59e0b,#f97316)',
     'linear-gradient(135deg,#10b981,#059669)',
