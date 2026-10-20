@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<meta name="theme-color" content="#6366f1"/>
+<meta name="theme-color" content="#3b9ef0"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -101,7 +101,7 @@
     var dark = JSON.parse(localStorage.getItem('nabda_theme'));
     if(dark === null) dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
     var bg = dark
-      ? 'linear-gradient(160deg,#0a0a14,#0d0d1a)'
+      ? 'linear-gradient(160deg,#0e1621,#17212b)'
       : 'linear-gradient(160deg,#f0f4ff,#e8eeff)';
     // استخدام style element بدل document.write
     var s = document.createElement('style');
@@ -115,9 +115,9 @@
 
 <!-- شاشة التحميل — تختفي فقط بعد FB.init() + تحميل البيانات الأساسية -->
 <div id="loading-screen">
-  <div style="width:64px;height:64px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 8px 24px rgba(99,102,241,.35)">💬</div>
+  <div style="width:64px;height:64px;background:linear-gradient(135deg,#3b9ef0,#2b7fd4);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 8px 24px rgba(99,102,241,.35)">💬</div>
   <div id="ls-title" style="font-size:22px;font-weight:800;letter-spacing:-0.5px">نبضة</div>
-  <div id="ls-spinner" style="width:36px;height:36px;border:3px solid #6366f1;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>
+  <div id="ls-spinner" style="width:36px;height:36px;border:3px solid #3b9ef0;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>
   <!-- رسالة الخطأ — تظهر فقط عند فشل التحميل -->
   <div id="loading-error">
     <div style="font-size:24px;margin-bottom:8px">⚠️</div>
@@ -125,7 +125,7 @@
     <br/>
     <button
       onclick="location.reload()"
-      style="margin-top:12px;padding:8px 20px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">
+      style="margin-top:12px;padding:8px 20px;background:#3b9ef0;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">
       إعادة المحاولة
     </button>
   </div>
@@ -210,7 +210,7 @@
       var banner = document.createElement('div');
       banner.style.cssText =
         'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);' +
-        'z-index:99999;background:#6366f1;color:#fff;padding:12px 20px;' +
+        'z-index:99999;background:#3b9ef0;color:#fff;padding:12px 20px;' +
         'border-radius:14px;font-size:13px;font-weight:700;direction:rtl;' +
         'display:flex;align-items:center;gap:12px;' +
         'box-shadow:0 4px 20px rgba(99,102,241,.5)';
@@ -219,7 +219,7 @@
       var btn = document.createElement('button');
       btn.textContent = 'تحديث';
       btn.style.cssText =
-        'border:none;background:#fff;color:#6366f1;padding:6px 14px;' +
+        'border:none;background:#fff;color:#3b9ef0;padding:6px 14px;' +
         'border-radius:8px;font-weight:700;cursor:pointer;font-size:12px';
       btn.onclick = function() { location.reload(); };
       var closeBtn = document.createElement('button');

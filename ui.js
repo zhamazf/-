@@ -49,18 +49,20 @@ window.UI = (function () {
   function getTheme() {
     const d = _dark;
     return {
-      bg:        d ? '#0a0a14'  : '#f0f2f5',
-      card:      d ? '#12121e'  : '#ffffff',
-      card2:     d ? '#1a1a2a'  : '#f8f9fa',
-      border:    d ? '#1e1e30'  : '#e5e7eb',
-      text:      d ? '#e0e0f0'  : '#1f2937',
-      text2:     d ? '#888'     : '#6b7280',
-      text3:     d ? '#8b93a8'  : '#5b6472',
-      inp:       d ? '#1a1a2a'  : '#f3f4f6',
-      inpBorder: d ? '#2a2a3e'  : '#d1d5db',
-      bubble:    d ? '#1e1e2e'  : '#e5e7eb',
-      topbar:    d ? '#12121e'  : '#ffffff',
-      tabs:      d ? '#12121e'  : '#ffffff',
+      bg:        d ? '#0e1621'  : '#eef2f6',
+      card:      d ? '#17212b'  : '#ffffff',
+      card2:     d ? '#1e2c3a'  : '#f6f8fb',
+      border:    d ? '#243444'  : '#dfe6ee',
+      text:      d ? '#f1f5f9'  : '#111b27',
+      text2:     d ? '#7d8b99'  : '#647386',
+      text3:     d ? '#9aa8b5'  : '#55657a',
+      inp:       d ? '#1e2c3a'  : '#f1f4f8',
+      inpBorder: d ? '#2b3d4f'  : '#cfd9e3',
+      bubble:    d ? '#212d3b'  : '#eef2f5',
+      topbar:    d ? '#17212b'  : '#ffffff',
+      tabs:      d ? '#17212b'  : '#ffffff',
+      accent:    '#3b9ef0',
+      accentSoft:d ? '#3b9ef033' : '#3b9ef01a',
     };
   }
 
@@ -72,15 +74,15 @@ window.UI = (function () {
     root.setAttribute('data-theme', _dark ? 'dark' : 'light');
     Object.entries(t).forEach(([k, v]) => root.style.setProperty(`--${k}`, v));
     const lsTitle = document.getElementById('ls-title');
-    if (lsTitle) lsTitle.style.color = _dark ? '#a5b4fc' : '#6366f1';
+    if (lsTitle) lsTitle.style.color = _dark ? '#8ec9ff' : '#3b9ef0';
   }
 
   /* ═══════════════════════════════════════════════
      USER COLOR
   ═══════════════════════════════════════════════ */
-  const COLORS = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#06b6d4'];
+  const COLORS = ['#3b9ef0','#ec4899','#f59e0b','#10b981','#3b82f6','#2b7fd4','#ef4444','#06b6d4'];
   function userColor(n) {
-    return n ? COLORS[n.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length] : '#6366f1';
+    return n ? COLORS[n.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length] : '#3b9ef0';
   }
 
   /* ═══════════════════════════════════════════════
@@ -287,7 +289,7 @@ window.UI = (function () {
      TOAST
   ═══════════════════════════════════════════════ */
   const TOAST_COLORS = {
-    info:    '#6366f1',
+    info:    '#3b9ef0',
     success: '#22c55e',
     error:   '#ef4444',
     warn:    '#f59e0b'
@@ -350,7 +352,7 @@ window.UI = (function () {
       const confirmBtn = document.createElement('button');
       confirmBtn.style.cssText =
         `flex:1;padding:10px;border:none;border-radius:10px;` +
-        `background:${danger?'#ef4444':'linear-gradient(135deg,#6366f1,#8b5cf6)'};` +
+        `background:${danger?'#ef4444':'linear-gradient(135deg,#3b9ef0,#2b7fd4)'};` +
         `color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer`;
       confirmBtn.textContent = confirmText;
       cancelBtn.addEventListener('click',  () => { ov.remove(); resolve(false); });
@@ -459,7 +461,7 @@ window.UI = (function () {
       const ringEl = document.createElement('div');
       ringEl.style.cssText =
         `padding:2px;border-radius:50%;` +
-        `border:2.5px solid ${seen ? '#aaa' : '#6366f1'};display:inline-flex`;
+        `border:2.5px solid ${seen ? '#aaa' : '#3b9ef0'};display:inline-flex`;
       ringEl.appendChild(inner);
       content = ringEl;
     }
