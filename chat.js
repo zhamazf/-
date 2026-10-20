@@ -85,8 +85,17 @@ window.Chat = (function () {
 
   const _E2E = () => (typeof window !== 'undefined' && window.E2E) ? window.E2E : null;
 
+  // إعدادات الخصوصية: تُزوَّد من app.js (تفضيلاتي + سياسة من يُسمح له بمراسلتي)
+  let _myPrefs = () => ({});
+  let _canSendTo = () => true;
+  function setPrivacyProviders(prefsFn, canSendFn) {
+    if (typeof prefsFn === 'function') _myPrefs = prefsFn;
+    if (typeof canSendFn === 'function') _canSendTo = canSendFn;
+  }
+
   async function sendDM(me, target, payload) {
     if (!me || !target) throw new Error('missing_args');
+    if (!_canSendTo(target)) { const er = new Error('not_allowed'); er.code = 'NOT_ALLOWED'; throw er; }
     if (payload?.type === 'text') {
       if (!payload.text?.trim()) throw new Error('empty_message');
       if (payload.text.length > MAX_MSG_LEN) throw new Error('message_too_long');
@@ -344,7 +353,7 @@ window.Chat = (function () {
     if (!groupId || !myUid) return;
     const now = Date.now();
     try {
-      await FB.set(`readReceipts/group_${groupId}/${myUid}`, now);
+      if (_myPrefs().readReceipts !== false) await FB.set(`readReceipts/group_${groupId}/${myUid}`, now);
       _groupReadCache.set(groupId, now);
     } catch {}
   }
@@ -427,7 +436,7 @@ window.Chat = (function () {
     }
     const now = Date.now();
     try {
-      await FB.set(`readReceipts/${chatKey}/${myUid}`, now);
+      if (_myPrefs().readReceipts !== false) await FB.set(`readReceipts/${chatKey}/${myUid}`, now);
       _idbSet('reads', `${chatKey}/${myUid}`, now);
       _readCache.set(chatKey, now);
     } catch {}
@@ -537,6 +546,7 @@ window.Chat = (function () {
   // activeId: للـ dm مفتاح المحادثة (dmKey من uid الطرفين) وللمجموعة gid؛ me: اسم المستخدم (اسم العقدة)
   function setTyping(me, activeId, screen, isTyping) {
     if (!activeId || !me) return;
+    if (isTyping && _myPrefs().typing === false) return;
     const path = screen === 'dm'
       ? `typing/dm/${activeId}/${me}`
       : `typing/group/${activeId}/${me}`;
@@ -589,15 +599,17 @@ window.Chat = (function () {
   /* ═══════════════════════════════════════════════════════════
      PRESENCE
   ═══════════════════════════════════════════════════════════ */
+  // lastSeen=false → لا نكتب وقت الظهور (يظهر "غير متصل" بدل الوقت)
+  const _lastStamp = () => (_myPrefs().lastSeen === false ? null : Date.now());
   function goOnline(uid) {
     if (!uid) return;
-    FB.set(`presence/${uid}`, { online: true, last: Date.now() });
-    FB.onDisconn(`presence/${uid}`, { online: false, last: Date.now() });
+    FB.set(`presence/${uid}`, { online: true, last: _lastStamp() });
+    FB.onDisconn(`presence/${uid}`, { online: false, last: _lastStamp() });
   }
 
   function goOffline(uid) {
     if (!uid) return;
-    FB.set(`presence/${uid}`, { online: false, last: Date.now() });
+    FB.set(`presence/${uid}`, { online: false, last: _lastStamp() });
   }
 
   function isOnline(presence, uid) {
@@ -625,6 +637,7 @@ window.Chat = (function () {
 
   /* ── Public API ──────────────────────────────────────────── */
   return {
+    setPrivacyProviders,
     dmKey,
     parseMessages,
     getNewMessages,

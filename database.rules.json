@@ -1,5 +1,17 @@
 {
   "rules": {
+    "userPosts": {
+      "$uid": {
+        ".read": "auth !== null && ($uid === auth.uid || root.child('users').child($uid).child('prefs').child('visibility').val() !== 'private' || root.child('users').child($uid).child('friends').child(auth.uid).exists())",
+        ".write": "$uid === auth.uid",
+        "$pid": {
+          ".validate": "newData.hasChildren(['type','items','ts']) && newData.child('type').isString() && (newData.child('type').val() === 'image' || newData.child('type').val() === 'video' || newData.child('type').val() === 'carousel')",
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
     "users": {
       "$uid": {
         ".read": "auth !== null",
@@ -19,6 +31,26 @@
         },
         "photo": {
           ".validate": "newData.isString() && newData.val().length < 6000000 && (newData.val().beginsWith('data:image/') || newData.val().beginsWith('https://firebasestorage.googleapis.com/') || newData.val().matches(/^https:\\/\\/lh[0-9]+\\.googleusercontent\\.com\\/.*/))"
+        },
+        "prefs": {
+          "visibility": {
+            ".validate": "newData.isString() && (newData.val() === 'public' || newData.val() === 'private')"
+          },
+          "whoMessage": {
+            ".validate": "newData.isString() && (newData.val() === 'everyone' || newData.val() === 'friends')"
+          },
+          "lastSeen": {
+            ".validate": "newData.isBoolean()"
+          },
+          "readReceipts": {
+            ".validate": "newData.isBoolean()"
+          },
+          "typing": {
+            ".validate": "newData.isBoolean()"
+          },
+          "$other": {
+            ".validate": false
+          }
         }
       }
     },

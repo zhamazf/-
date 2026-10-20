@@ -49,20 +49,24 @@ window.UI = (function () {
   function getTheme() {
     const d = _dark;
     return {
-      bg:        d ? '#0e1621'  : '#eef2f6',
-      card:      d ? '#17212b'  : '#ffffff',
-      card2:     d ? '#1e2c3a'  : '#f6f8fb',
-      border:    d ? '#243444'  : '#dfe6ee',
-      text:      d ? '#f1f5f9'  : '#111b27',
-      text2:     d ? '#7d8b99'  : '#647386',
-      text3:     d ? '#9aa8b5'  : '#55657a',
-      inp:       d ? '#1e2c3a'  : '#f1f4f8',
-      inpBorder: d ? '#2b3d4f'  : '#cfd9e3',
-      bubble:    d ? '#212d3b'  : '#eef2f5',
-      topbar:    d ? '#17212b'  : '#ffffff',
-      tabs:      d ? '#17212b'  : '#ffffff',
-      accent:    '#3b9ef0',
-      accentSoft:d ? '#3b9ef033' : '#3b9ef01a',
+      bg:        d ? '#07120d'  : '#fbe3d2',
+      card:      d ? '#0e1d17'  : '#fff8f3',
+      card2:     d ? '#13261e'  : '#fcefe6',
+      border:    d ? '#1b3327'  : '#f0d3bf',
+      text:      d ? '#e9f7ef'  : '#3b2418',
+      text2:     d ? '#7fa592'  : '#8a6a58',
+      text3:     d ? '#8fb3a0'  : '#7a5a48',
+      inp:       d ? '#13261e'  : '#fff8f3',
+      inpBorder: d ? '#224235'  : '#eccab3',
+      bubble:    d ? '#1a2e25'  : '#fff1e6',
+      topbar:    d ? '#0e1d17'  : '#fff8f3',
+      tabs:      d ? '#0e1d17'  : '#fff8f3',
+      accent:    d ? '#22e07a'  : '#e8794a',
+      accent2:   d ? '#12b25c'  : '#c9603a',
+      acc11:     d ? '#22e07a11': '#e8794a11',
+      acc15:     d ? '#22e07a15': '#e8794a15',
+      acc22:     d ? '#22e07a22': '#e8794a22',
+      acc33:     d ? '#22e07a33': '#e8794a33',
     };
   }
 
@@ -74,15 +78,15 @@ window.UI = (function () {
     root.setAttribute('data-theme', _dark ? 'dark' : 'light');
     Object.entries(t).forEach(([k, v]) => root.style.setProperty(`--${k}`, v));
     const lsTitle = document.getElementById('ls-title');
-    if (lsTitle) lsTitle.style.color = _dark ? '#8ec9ff' : '#3b9ef0';
+    if (lsTitle) lsTitle.style.color = _dark ? '#22e07a' : '#e8794a';
   }
 
   /* ═══════════════════════════════════════════════
      USER COLOR
   ═══════════════════════════════════════════════ */
-  const COLORS = ['#3b9ef0','#ec4899','#f59e0b','#10b981','#3b82f6','#2b7fd4','#ef4444','#06b6d4'];
+  const COLORS = ['var(--accent)','#ec4899','#f59e0b','#10b981','#3b82f6','var(--accent2)','#ef4444','#06b6d4'];
   function userColor(n) {
-    return n ? COLORS[n.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length] : '#3b9ef0';
+    return n ? COLORS[n.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length] : 'var(--accent)';
   }
 
   /* ═══════════════════════════════════════════════
@@ -189,6 +193,43 @@ window.UI = (function () {
      Helper عام لعرض bottom sheet
      opts: { title, content (DOM node), onClose }
   ═══════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════
+     SHEET GESTURES — سحب النافذة للأسفل للإغلاق
+     يشتغل فقط إذا المحتوى في أعلى النافذة (scrollTop = 0)
+  ═══════════════════════════════════════════════ */
+  function attachSheetGestures(ov, sheet, close) {
+    let y0 = null, dy = 0, t0 = 0;
+    const pt = e => (e.touches ? e.touches[0] : e);
+    sheet.addEventListener('touchstart', e => {
+      if (sheet.scrollTop > 0) { y0 = null; return; }
+      y0 = pt(e).clientY; dy = 0; t0 = Date.now();
+      sheet.style.transition = 'none';
+    }, { passive: true });
+    sheet.addEventListener('touchmove', e => {
+      if (y0 === null) return;
+      dy = Math.max(0, pt(e).clientY - y0);
+      if (dy > 0) {
+        sheet.style.transform = `translateY(${dy}px)`;
+        if (e.cancelable) e.preventDefault();
+      }
+    }, { passive: false });
+    const end = () => {
+      if (y0 === null) return;
+      const v = dy / Math.max(1, Date.now() - t0);
+      y0 = null;
+      sheet.style.transition = 'transform .22s ease';
+      if (dy > 100 || v > 0.6) {
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(close, 200);
+      } else {
+        sheet.style.transform = '';
+      }
+      dy = 0;
+    };
+    sheet.addEventListener('touchend', end);
+    sheet.addEventListener('touchcancel', end);
+  }
+
   function showBottomSheet(opts = {}) {
     const { title = '', content = null, onClose = null } = opts;
     const ex = document.getElementById('_bottom_sheet'); if (ex) ex.remove();
@@ -221,6 +262,7 @@ window.UI = (function () {
     });
     ov.appendChild(sheet);
     document.body.appendChild(ov);
+    attachSheetGestures(ov, sheet, () => { ov.remove(); if (onClose) onClose(); });
     return {
       close: () => { ov.remove(); if (onClose) onClose(); },
       sheet,
@@ -289,7 +331,7 @@ window.UI = (function () {
      TOAST
   ═══════════════════════════════════════════════ */
   const TOAST_COLORS = {
-    info:    '#3b9ef0',
+    info:    'var(--accent)',
     success: '#22c55e',
     error:   '#ef4444',
     warn:    '#f59e0b'
@@ -352,7 +394,7 @@ window.UI = (function () {
       const confirmBtn = document.createElement('button');
       confirmBtn.style.cssText =
         `flex:1;padding:10px;border:none;border-radius:10px;` +
-        `background:${danger?'#ef4444':'linear-gradient(135deg,#3b9ef0,#2b7fd4)'};` +
+        `background:${danger?'#ef4444':'linear-gradient(135deg,var(--accent),var(--accent2))'};` +
         `color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer`;
       confirmBtn.textContent = confirmText;
       cancelBtn.addEventListener('click',  () => { ov.remove(); resolve(false); });
@@ -461,7 +503,7 @@ window.UI = (function () {
       const ringEl = document.createElement('div');
       ringEl.style.cssText =
         `padding:2px;border-radius:50%;` +
-        `border:2.5px solid ${seen ? '#aaa' : '#3b9ef0'};display:inline-flex`;
+        `border:2.5px solid ${seen ? '#aaa' : 'var(--accent)'};display:inline-flex`;
       ringEl.appendChild(inner);
       content = ringEl;
     }
@@ -636,6 +678,7 @@ window.UI = (function () {
 
     // Toast
     toast,
+    attachSheetGestures,
 
     // Loading indicators
     btnLoading,

@@ -14,8 +14,8 @@ button{cursor:pointer}
 /* ── Scrollbar ── */
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#3b9ef088;border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:#3b9ef0cc}
+::-webkit-scrollbar-thumb{background:var(--accent)88;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)cc}
 .no-scrollbar{scrollbar-width:none}
 .no-scrollbar::-webkit-scrollbar{display:none}
 
@@ -44,10 +44,10 @@ button{cursor:pointer}
 .typing span:nth-child(3){animation-delay:.4s}
 
 /* ── Pull to refresh ── */
-.ptr-spinner{display:flex;align-items:center;justify-content:center;padding:12px;color:#3b9ef0;font-size:13px;gap:8px}
+.ptr-spinner{display:flex;align-items:center;justify-content:center;padding:12px;color:var(--accent);font-size:13px;gap:8px}
 
 /* ── Story progress bar (مصحح) ── */
-.story-bar{height:3px;background:#3b9ef044;border-radius:2px;overflow:hidden}
+.story-bar{height:3px;background:var(--accent)44;border-radius:2px;overflow:hidden}
 .story-bar-fill{height:100%;background:#fff;border-radius:2px;width:0}
 .story-bar-fill.active{animation:storyProgress var(--story-duration,5000ms) linear forwards}
 
@@ -56,8 +56,8 @@ button{cursor:pointer}
 .toast-item.out{animation:toastOut .25s ease forwards}
 
 /* ── Cooldown bar (مصحح) ── */
-.cooldown-bar{height:2px;overflow:hidden;background:#3b9ef01a}
-.cooldown-fill{height:100%;background:#3b9ef0;transform-origin:right;animation:cooldown var(--spam-delay,1200ms) linear forwards}
+.cooldown-bar{height:2px;overflow:hidden;background:var(--accent)1a}
+.cooldown-fill{height:100%;background:var(--accent);transform-origin:right;animation:cooldown var(--spam-delay,1200ms) linear forwards}
 
 /* ── Toast host ── */
 #toast-host{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
@@ -75,8 +75,8 @@ button{cursor:pointer}
 
 /* ── Chat input ── */
 .chat-input-field{flex:1;border-radius:22px;border:1.5px solid #e5e7eb;font-size:14px;direction:rtl;resize:none;overflow:hidden;min-height:40px;max-height:120px;line-height:1.4;box-sizing:border-box;padding:10px 14px;transition:border-color .2s ease,box-shadow .2s ease;background:#fff}
-.chat-input-field:focus{border-color:#3b9ef0;box-shadow:0 0 0 3px rgba(59,158,240,.1)}
-.send-btn{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#3b9ef0,#2b7fd4);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(59,158,240,.4);border:none;transition:transform .15s ease,box-shadow .15s ease}
+.chat-input-field:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,158,240,.1)}
+.send-btn{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(59,158,240,.4);border:none;transition:transform .15s ease,box-shadow .15s ease}
 .send-btn:active{transform:scale(.95);box-shadow:0 1px 4px rgba(59,158,240,.3)}
 
 /* ── Media tray buttons ── */
@@ -106,7 +106,7 @@ button{cursor:pointer}
 .av-ring{padding:2px;border-radius:50%;display:inline-flex}
 
 /* ── Unread badge ── */
-.unread-badge{background:#3b9ef0;color:#fff;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px;box-shadow:0 2px 4px rgba(59,158,240,.3)}
+.unread-badge{background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px;box-shadow:0 2px 4px rgba(59,158,240,.3)}
 
 /* ── Story viewer ── */
 #story-viewer-overlay{position:fixed;inset:0;background:#000;z-index:999;display:flex;flex-direction:column}
@@ -121,7 +121,7 @@ button{cursor:pointer}
 
 /* ── Field ── */
 .field-input{width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid #e5e7eb;font-size:14px;font-family:inherit;direction:rtl;box-sizing:border-box;transition:border-color .2s ease,box-shadow .2s ease;background:#fff}
-.field-input:focus{border-color:#3b9ef0;box-shadow:0 0 0 3px rgba(59,158,240,.1)}
+.field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,158,240,.1)}
 
 /* ── Reduced Motion — احترام تفضيل المستخدم ── */
 @media (prefers-reduced-motion: reduce) {
@@ -141,7 +141,7 @@ button{cursor:pointer}
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid #3b9ef0;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 button:focus:not(:focus-visible),
@@ -197,7 +197,7 @@ input:focus:not(:focus-visible) {
 
 /* ── Reply Preview (في فقاعة الرسالة) ── */
 .reply-preview {
-  border-right: 3px solid #3b9ef0;
+  border-right: 3px solid var(--accent);
   border-radius: 8px 8px 0 0;
   padding: 5px 9px;
   font-size: 11px;
@@ -208,7 +208,7 @@ input:focus:not(:focus-visible) {
 .reply-preview:hover { opacity: .8; }
 .reply-preview .reply-sender {
   font-weight: 700;
-  color: #3b9ef0;
+  color: var(--accent);
   margin-bottom: 2px;
 }
 .reply-preview .reply-text {
@@ -239,7 +239,7 @@ input:focus:not(:focus-visible) {
 #reply-bar .reply-bar-name {
   font-size: 11px;
   font-weight: 700;
-  color: #3b9ef0;
+  color: var(--accent);
   margin-bottom: 1px;
 }
 #reply-bar .reply-bar-preview {
@@ -269,7 +269,7 @@ input:focus:not(:focus-visible) {
 #pinned-bar .pin-label {
   font-size: 10px;
   font-weight: 700;
-  color: #3b9ef0;
+  color: var(--accent);
   white-space: nowrap;
 }
 #pinned-bar .pin-text {
@@ -303,15 +303,15 @@ input:focus:not(:focus-visible) {
 }
 .reaction-btn:active { transform: scale(.92); }
 .reaction-btn.mine {
-  border-color: #3b9ef0;
-  background: #3b9ef022;
+  border-color: var(--accent);
+  background: var(--accent)22;
 }
 .reaction-btn .rx-count {
   font-size: 10px;
   font-weight: 700;
   color: var(--text2, #6b7280);
 }
-.reaction-btn.mine .rx-count { color: #3b9ef0; }
+.reaction-btn.mine .rx-count { color: var(--accent); }
 
 /* ── Reaction Picker Overlay ── */
 #rx-picker {
@@ -412,7 +412,7 @@ input:focus:not(:focus-visible) {
   direction: rtl;
   transition: border-color .2s;
 }
-#search-bar input:focus { border-color: #3b9ef0; }
+#search-bar input:focus { border-color: var(--accent); }
 
 /* ── Load More Button ── */
 #load-more-btn {
@@ -457,7 +457,7 @@ input:focus:not(:focus-visible) {
   position: absolute;
   top: 0; right: 0;
   height: 100%;
-  background: #3b9ef011;
+  background: var(--accent)11;
   border-radius: 10px;
   transition: width .4s ease;
 }
@@ -468,7 +468,7 @@ input:focus:not(:focus-visible) {
   transform: translateY(-50%);
   font-size: 11px;
   font-weight: 700;
-  color: #3b9ef0;
+  color: var(--accent);
   z-index: 1;
 }
 .poll-meta {
@@ -512,12 +512,12 @@ input:focus:not(:focus-visible) {
 [data-theme="dark"] #ctx-menu button:hover { background: #1a1a2a; }
 [data-theme="dark"] #rx-picker   { background: #12121e; border-color: #1e1e30; box-shadow: 0 4px 20px rgba(0,0,0,.5); }
 [data-theme="dark"] .reaction-btn { background: #1a1a2a; border-color: #1e1e30; }
-[data-theme="dark"] .reaction-btn.mine { background: #3b9ef033; border-color: #3b9ef0; }
+[data-theme="dark"] .reaction-btn.mine { background: var(--accent)33; border-color: var(--accent); }
 [data-theme="dark"] #load-more-btn { background: #1a1a2a; border-color: #1e1e30; color: #888; }
 
 /* ── Selection color ── */
 ::selection {
-  background: #3b9ef033;
+  background: var(--accent)33;
   color: inherit;
 }
 
@@ -527,7 +527,7 @@ input:focus:not(:focus-visible) {
 :root{color-scheme:light dark}
 html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 body{text-rendering:optimizeLegibility;overscroll-behavior:none}
-::selection{background:#3b9ef055}
+::selection{background:var(--accent)55}
 
 /* مناطق آمنة (النتوءات/شريط الإيماءات) */
 #app{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
@@ -555,7 +555,7 @@ input:focus,textarea:focus{box-shadow:0 0 0 3px rgba(59,158,240,.15)}
 #rx-picker{box-shadow:0 8px 28px rgba(0,0,0,.28)}
 
 /* شريط التمرير أنعم */
-*{scrollbar-width:thin;scrollbar-color:#3b9ef066 transparent}
+*{scrollbar-width:thin;scrollbar-color:var(--accent)66 transparent}
 
 /* احترام تفضيل تقليل الحركة */
 @media (prefers-reduced-motion:reduce){
@@ -608,3 +608,15 @@ body{background:var(--bg);color:var(--text)}
 
 /* Focus */
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline-color:var(--accent)}
+
+/* ═══════════════════════════════════════════
+   v4 — الشاشة الرئيسية (مثل التصميم المرجعي)
+   ═══════════════════════════════════════════ */
+#home-content{padding:14px 16px 110px !important;background:var(--bg)}
+#nb-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+#nb-stories{background:transparent !important;border:none !important;padding:0 0 14px !important}
+#home-tabs{position:fixed !important;bottom:16px;left:50%;transform:translateX(-50%);width:min(90vw,300px);z-index:50;display:flex;gap:4px;padding:6px !important;box-sizing:border-box;border:1px solid var(--border);border-radius:999px;background:var(--card);box-shadow:0 10px 30px rgba(0,0,0,.18)}
+#home-tabs .tab{flex:1;display:flex;align-items:center;justify-content:center;border:none !important;border-radius:999px;padding:11px 0 !important;background:transparent;color:var(--text3)}
+#home-tabs .tab.active{background:var(--acc22);color:var(--accent) !important}
+.nb-row{background:transparent !important;border:none !important;border-bottom:1px solid var(--border) !important;border-radius:0 !important;padding:14px 4px !important;margin:0 !important;box-shadow:none !important}
+.nb-row:active{opacity:.7}
