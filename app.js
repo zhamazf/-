@@ -776,11 +776,13 @@
   /* ═══════════════════════════════════════════════════════════
      HOME
   ═══════════════════════════════════════════════════════════ */
+  let _storyWrap=null;
   function renderHome(){
     APP.appendChild(buildHomeTopbar());
     const stWrap=UI.el('div',`padding:10px 14px 8px;border-bottom:1px solid ${th().border};flex-shrink:0;background:${th().topbar}`);
     const stInner=UI.el('div','display:flex;gap:12px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none');
-    stInner.id='story-inner'; buildStoryInner(stInner); stWrap.appendChild(stInner); APP.appendChild(stWrap);
+    stWrap.id='nb-stories';
+    stInner.id='story-inner'; buildStoryInner(stInner); stWrap.appendChild(stInner); _storyWrap=stWrap;
     APP.appendChild(buildHomeTabs());
     const content=UI.el('div','flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch');
     content.id='home-content'; APP.appendChild(content); renderTabContent(content);
@@ -837,16 +839,36 @@
     });
   }
 
+  const _NB_ICONS={
+    chats:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    groups:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    settings:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+  };
   function buildHomeTabs(){
-    const tabs=UI.el('div',`display:flex;background:${th().tabs};border-bottom:1px solid ${th().border};flex-shrink:0`); tabs.id='home-tabs';
-    [['chats','💬 الخاصة'],['groups','👥 مجموعات'],['unread','🔔']].forEach(([k,l])=>{
-      const b=UI.el('button'); b.className='tab'+(S.tab===k?' active':''); b.style.color=S.tab===k?(UI.isDark()?'var(--accent)':'var(--accent)'):th().text3; b.style.borderBottomColor=S.tab===k?'var(--accent)':'transparent';
-      if(k==='unread'){const n=(Object.values(unread()).reduce((a,b)=>a+b,0)+Object.values(unreadGrps()).reduce((a,b)=>a+b,0));const sp=document.createElement('span');sp.id='tab-unread-extra';sp.textContent=n>0?` (${n})`:'';b.textContent='🔔';b.appendChild(sp);}
-      else b.textContent=l;
-      b.addEventListener('click',()=>{S.tab=k;tabs.querySelectorAll('.tab').forEach((x,i)=>{const ks=['chats','groups','unread'];x.style.color=S.tab===ks[i]?(UI.isDark()?'var(--accent)':'var(--accent)'):th().text3;x.style.borderBottomColor=S.tab===ks[i]?'var(--accent)':'transparent';x.classList.toggle('active',S.tab===ks[i]);});const c=document.getElementById('home-content');if(c)renderTabContent(c);});
+    if(S.tab==='unread') S.tab='chats';
+    const tabs=UI.el('div','');
+    tabs.id='home-tabs';
+    [['chats','الخاصة'],['groups','المجموعات']].forEach(([k,l])=>{
+      const b=UI.el('button'); b.className='tab'+(S.tab===k?' active':''); b.setAttribute('aria-label',l);
+      b.innerHTML=_NB_ICONS[k];
+      b.addEventListener('click',()=>{S.tab=k;tabs.querySelectorAll('.tab').forEach((x,i)=>x.classList.toggle('active',S.tab===['chats','groups'][i]));const c=document.getElementById('home-content');if(c)renderTabContent(c);});
       tabs.appendChild(b);
     });
     return tabs;
+  }
+
+  /* رأس القائمة: بحث + إعدادات بجانبه */
+  function buildListHead(){
+    const row=UI.el('div','');
+    row.id='nb-head';
+    const inp=UI.el('input',`flex:1;min-width:0;padding:11px 16px;border-radius:999px;border:1px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;font-family:inherit;box-sizing:border-box;direction:rtl;outline:none`);
+    inp.placeholder='بحث';
+    inp.addEventListener('input',()=>{const q=inp.value.trim();document.querySelectorAll('#home-content .nb-row').forEach(r=>{r.style.display=(!q||r.textContent.includes(q))?'':'none';});});
+    const sBtn=UI.el('button','flex-shrink:0;width:42px;height:42px;border-radius:50%;border:1px solid '+th().inpBorder+';background:'+th().card+';color:'+th().text+';display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0');
+    sBtn.innerHTML=_NB_ICONS.settings; sBtn.setAttribute('aria-label','الإعدادات');
+    sBtn.addEventListener('click',()=>go('profile'));
+    row.appendChild(inp); row.appendChild(sBtn);
+    return row;
   }
 
   function _buildArchiveRow(n){
@@ -861,13 +883,10 @@
 
   function renderTabContent(container){
     container.innerHTML='';
+    if(container.id==='home-content'){ container.appendChild(buildListHead()); if(_storyWrap) container.appendChild(_storyWrap); }
     if(S.tab==='chats'){
-      const nbSearch=UI.el('input',`width:100%;padding:11px 16px;border-radius:999px;border:1px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;font-family:inherit;margin-bottom:12px;box-sizing:border-box;direction:rtl;outline:none`);
-      nbSearch.placeholder='ابحث في المحادثات...';
-      nbSearch.addEventListener('input',()=>{const q=nbSearch.value.trim();container.querySelectorAll('.nb-row').forEach(r=>{r.style.display=(!q||r.textContent.includes(q))?'':'none';});});
-      container.appendChild(nbSearch);
       const hdr=UI.el('div','display:flex;align-items:center;justify-content:space-between;margin-bottom:10px');
-      const lbl=UI.el('span',`font-size:11px;font-weight:700;color:${th().text3};letter-spacing:1px`); lbl.textContent='المحادثات الخاصة';
+      const lbl=UI.el('span',`font-size:11px;font-weight:700;color:${th().text3};letter-spacing:1px`); lbl.textContent='الرسائل الأخيرة';
       const plusBtn=UI.el('button','background:none;border:none;cursor:pointer;color:var(--accent);font-size:22px;line-height:1;padding:0'); plusBtn.textContent='+';
       hdr.appendChild(lbl); hdr.appendChild(plusBtn); container.appendChild(hdr);
       let showNdm=false;
