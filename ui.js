@@ -49,6 +49,7 @@ window.UI = (function () {
   function getTheme() {
     const d = _dark;
     return {
+    attachSheetGestures,
       bg:        d ? '#07120d'  : '#fbe3d2',
       card:      d ? '#0e1d17'  : '#fff8f3',
       card2:     d ? '#13261e'  : '#fcefe6',
@@ -193,6 +194,43 @@ window.UI = (function () {
      Helper عام لعرض bottom sheet
      opts: { title, content (DOM node), onClose }
   ═══════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════
+     SHEET GESTURES — سحب النافذة للأسفل للإغلاق
+     يشتغل فقط إذا المحتوى في أعلى النافذة (scrollTop = 0)
+  ═══════════════════════════════════════════════ */
+  function attachSheetGestures(ov, sheet, close) {
+    let y0 = null, dy = 0, t0 = 0;
+    const pt = e => (e.touches ? e.touches[0] : e);
+    sheet.addEventListener('touchstart', e => {
+      if (sheet.scrollTop > 0) { y0 = null; return; }
+      y0 = pt(e).clientY; dy = 0; t0 = Date.now();
+      sheet.style.transition = 'none';
+    }, { passive: true });
+    sheet.addEventListener('touchmove', e => {
+      if (y0 === null) return;
+      dy = Math.max(0, pt(e).clientY - y0);
+      if (dy > 0) {
+        sheet.style.transform = `translateY(${dy}px)`;
+        if (e.cancelable) e.preventDefault();
+      }
+    }, { passive: false });
+    const end = () => {
+      if (y0 === null) return;
+      const v = dy / Math.max(1, Date.now() - t0);
+      y0 = null;
+      sheet.style.transition = 'transform .22s ease';
+      if (dy > 100 || v > 0.6) {
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(close, 200);
+      } else {
+        sheet.style.transform = '';
+      }
+      dy = 0;
+    };
+    sheet.addEventListener('touchend', end);
+    sheet.addEventListener('touchcancel', end);
+  }
+
   function showBottomSheet(opts = {}) {
     const { title = '', content = null, onClose = null } = opts;
     const ex = document.getElementById('_bottom_sheet'); if (ex) ex.remove();
@@ -225,6 +263,7 @@ window.UI = (function () {
     });
     ov.appendChild(sheet);
     document.body.appendChild(ov);
+    attachSheetGestures(ov, sheet, () => { ov.remove(); if (onClose) onClose(); });
     return {
       close: () => { ov.remove(); if (onClose) onClose(); },
       sheet,
