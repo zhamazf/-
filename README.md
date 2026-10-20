@@ -1,32 +1,44 @@
-# نبضة (Nabda) — تطبيق دردشة PWA
 
-HTML + JavaScript عادي (بدون bundler) + Firebase (Auth / Realtime Database / Storage). النشر: Netlify من فرع `main`.
+# نبضة (Nabda)
 
-## الملفات
-- `index.html` يحمّل السكربتات بالترتيب: firebase → auth → e2e → chat → friends → groups → stories → ui → app
-- `e2e.js` تشفير الرسائل الخاصة طرف-لطرف (ECDH P-256 + AES-256-GCM، مفتاح لكل جهاز، بدون إعداد من المستخدم)
-- `database.rules.json` قواعد Realtime Database — **تُلصق يدوياً** في Firebase Console ← Realtime Database ← Rules ← Publish
-- `storage.rules` قواعد Firebase Storage — **تُلصق يدوياً** في Firebase Console ← Storage ← Rules ← Publish (غير مغطاة بالاختبارات الآلية)
-- `service-worker.js` كاش + عمل أوفلاين (عند إضافة ملف جديد أضفه إلى `STATIC_FILES` وغيّر `_BUILD`)
+تطبيق دردشة PWA يشتغل على المتصفح والموبايل، مبني بـ HTML وJavaScript بدون أدوات بناء، ويعتمد على Firebase للدخول وقاعدة البيانات والتخزين.
 
-## الاختبارات
+## المميزات
+- محادثات خاصة ومجموعات
+- قصص (Stories) وطلبات صداقة
+- مؤشر الكتابة وحالة الاتصال
+- رسائل صوتية وصور ومرفقات
+- تشفير طرف-لطرف للرسائل الخاصة
+- يشتغل كتطبيق مثبّت على الهاتف، ويعمل بدون إنترنت جزئياً
+
+## الملفات الرئيسية
+- `index.html`: نقطة الدخول، يحمّل كل السكربتات بالترتيب
+- `e2e.js`: تشفير الرسائل الخاصة (ECDH P-256 + AES-256-GCM)، مفتاح لكل جهاز
+- `chat.js`، `friends.js`، `groups.js`، `stories.js`: وظائف كل شاشة
+- `ui.js`: الثيم والإشعارات والتنبيهات
+- `app.js`: التنقل بين الشاشات والربط بين الأجزاء
+- `style.css`: التصميم
+- `service-worker.js`: الكاش والعمل بدون إنترنت
+- `database.rules.json` و`storage.rules`: قواعد Firebase
+
+## تشغيل الاختبارات
 ```
 npm install
 npm test
 ```
-- `tests/files.test.js` كل ملف مذكور موجود
-- `tests/rules.test.js` اختبار القواعد (targaryen)
-- `tests/e2e.test.js` اختبار التشفير (Node + WebCrypto)
-- `tests/listeners.test.js` + `tests/smoke.test.js` يشغّلان `app.js` بدون شبكة ويتأكدان أن مستمعات Firebase محدودة (presence لكل مستخدم، typing للمحادثة المفتوحة، رسائل المجموعة بحد 60)
+
+## قواعد Firebase
+قواعد Realtime Database وStorage تنلصق يدوياً من Firebase Console:
+- Realtime Database ← Rules ← الصق `database.rules.json` ← Publish
+- Storage ← Rules ← الصق `storage.rules` ← Publish
 
 ## ملاحظات أمنية
-- المجموعات غير مشفّرة طرف-لطرف. التفاعلات وحالة القراءة غير مشفّرة.
-- جهاز جديد لا يقرأ الرسائل المشفّرة القديمة (مثل واتساب بدون نسخة احتياطية).
-- مفاتيح Firebase في الكود عامة بطبيعتها؛ الحماية هي القواعد (يُنصح بتفعيل App Check).
-- الإيميل لا يُخزَّن في `users/{uid}` (مقروء لكل المستخدمين) — يبقى في Firebase Auth فقط، والتطبيق ينظّف النسخة القديمة تلقائياً عند الفتح.
-- في الرسائل: المرسل وحده يعدّل/يحذف رسالته؛ الطرف الآخر يكتب فقط `status` وتفاعلاته هو. حقل `url`/`data` يقبل dataURL أو رابط Firebase Storage فقط، والـ CSP يحجب الصور/الفيديو من أي موقع آخر.
-- قيد معروف: أي طرف في محادثة خاصة يقدر يحذف المحادثة كاملة (مطلوب لحذف الحساب). حله الكامل يحتاج Cloud Functions.
-- مؤشر الكتابة (`typing`): القراءة والكتابة لطرفي المحادثة الخاصة وأعضاء المجموعة فقط.
-- قراءة Storage لأي مستخدم مسجّل يملك الرابط (المسارات عشوائية). الإشعارات: تكرارها غير مقيّد في القواعد (حله Cloud Functions).
-- CI: `.github/workflows/test.yml` يشغّل `npm test` على كل push وPR.
-- الإشعارات (`notifications`): تُقبل فقط ثلاثة أنواع مربوطة بحدث حقيقي (friend_request بوجود طلب، friend_accept بين أصدقاء، group_add من أدمن/مود لعضو فعلي). تكرار نفس النوع من صديق فعلي غير مقيّد (حله Cloud Functions). ملاحظة: العميل حالياً لا يقرأ `notifications/`.
+- المجموعات غير مشفّرة طرف-لطرف، والتفاعلات وحالة القراءة كذلك.
+- الجهاز الجديد ما يقرأ الرسائل المشفّرة القديمة.
+- مفاتيح Firebase في الكود عامة بطبيعتها، والحماية الحقيقية من القواعد. يُنصح بتفعيل App Check.
+- الإيميل ما يتخزن في `users/{uid}`.
+- أي طرف في محادثة خاصة يقدر يحذفها (مطلوب لحذف الحساب). الحل الكامل يحتاج Cloud Functions.
+- تكرار الإشعارات غير مقيّد بالقواعد. الحل يحتاج Cloud Functions.
+
+## إضافة ملف جديد
+أضف الملف إلى `STATIC_FILES` في `service-worker.js`، وغيّر `_BUILD` عشان المتصفحات تحدّث الكاش.
