@@ -934,13 +934,35 @@
       body.appendChild(note);
     };
 
+    const field=(ph,tp)=>{const i=UI.el('input',`width:100%;padding:12px 14px;border-radius:12px;border:1px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;font-family:inherit;direction:rtl;box-sizing:border-box;margin-bottom:10px`);i.type=tp||'text';i.placeholder=ph;return i;};
+    const saveRow=(t,fn)=>{const x=UI.el('button',`width:100%;padding:13px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer`);x.textContent=t;x.addEventListener('click',fn);return x;};
+    const showPassword=()=>{
+      body.innerHTML=''; ttl.textContent='تغيير كلمة المرور'; back.style.display='';
+      const a1=field('كلمة المرور الحالية','password'), a2=field('كلمة المرور الجديدة','password'), a3=field('تأكيد كلمة المرور الجديدة','password');
+      body.appendChild(a1); body.appendChild(a2); body.appendChild(a3);
+      body.appendChild(saveRow('حفظ',async()=>{
+        const res=await Auth.changePassword(a1.value,a2.value,a3.value);
+        if(res.error){UI.toast(res.error,'error');return;}
+        UI.toast('تم تغيير كلمة المرور','success'); showMain();
+      }));
+    };
+    const showEmail=()=>{
+      body.innerHTML=''; ttl.textContent='تغيير البريد الإلكتروني'; back.style.display='';
+      const em=field('البريد الإلكتروني الجديد','email'), pw=field('كلمة المرور الحالية','password');
+      body.appendChild(em); body.appendChild(pw);
+      body.appendChild(saveRow('حفظ',async()=>{
+        const res=await Auth.updateEmail(pw.value,em.value);
+        if(res.error){UI.toast(res.error,'error');return;}
+        UI.toast('تم تغيير البريد ✓','success'); showMain();
+      }));
+    };
     const showMain=()=>{
       body.innerHTML=''; ttl.textContent='الإعدادات';
       body.appendChild(label('الحساب'));
       body.appendChild(btn('👥  أصدقائي',()=>{close();go('friends');}));
       body.appendChild(btn('👤  تعديل الملف الشخصي',goProfile));
-      body.appendChild(btn('✉️  تغيير البريد الإلكتروني',goProfile));
-      body.appendChild(btn('🔑  تغيير كلمة المرور',goProfile));
+      body.appendChild(btn('✉️  تغيير البريد الإلكتروني',()=>showEmail()));
+      body.appendChild(btn('🔑  تغيير كلمة المرور',()=>showPassword()));
       body.appendChild(btn('📱  تغيير رقم الهاتف',()=>UI.toast('غير متاح: الحسابات مبنية على البريد الإلكتروني','info')));
       body.appendChild(label('المظهر والإشعارات'));
       body.appendChild(btn(UI.isDark()?'☀️  الوضع الفاتح':'🌙  الوضع الداكن',()=>{UI.toggleDark();S.dark=UI.isDark();close();renderScreen();}));
@@ -948,7 +970,7 @@
       body.appendChild(label('الخصوصية والأمان'));
       body.appendChild(btn('🛡  إعدادات الخصوصية',()=>{showPrivacy();}));
       body.appendChild(btn('🚫  المحظورون',()=>{showBlocked();}));
-      body.appendChild(btn('🔐  معلومات التشفير',goProfile));
+      body.appendChild(btn('🔐  التشفير والنسخة الاحتياطية',()=>{close();_openE2EManage();}));
       body.appendChild(btn('📄  سياسة الخصوصية',()=>window.open('privacy.html','_blank','noopener')));
       body.appendChild(btn('📜  الشروط والأحكام',()=>window.open('terms.html','_blank','noopener')));
       body.appendChild(label('منطقة الخطر'));
@@ -2047,41 +2069,251 @@
      البيانات: userPosts/{uid}/{pid} = { type, url, ts }
      الملفات: Storage (posts/{uid}/...)
   ═══════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════
+     المنشورات: صور (متعددة مع تعديل) أو فيديو واحد
+     البيانات: userPosts/{uid}/{pid} = { type, items:[{kind,url}], ts }
+     الملفات: Storage (posts/{uid}/...)
+  ═══════════════════════════════════════════════ */
   const POST_VIDEO_MAX_SEC = 15;
   const POST_VIDEO_MAX_BYTES = 10 * 1024 * 1024;
-  const POST_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+  const POST_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+  const POST_MAX_IMAGES = 10;
 
-  async function _uploadPost(file){
-    const isVid = file.type.startsWith('video/');
-    if (isVid) {
-      if (file.size > POST_VIDEO_MAX_BYTES) throw new Error('الفيديو كبير، الحد الأقصى 10MB');
-      const dur = await new Promise((res, rej) => {
-        const v = document.createElement('video');
-        v.preload = 'metadata';
-        const src = URL.createObjectURL(file);
-        v.onloadedmetadata = () => { URL.revokeObjectURL(src); res(v.duration); };
-        v.onerror = () => { URL.revokeObjectURL(src); rej(new Error('تعذّر قراءة الفيديو')); };
-        v.src = src;
-      });
-      if (!(dur <= POST_VIDEO_MAX_SEC + 0.5)) throw new Error('المقطع أطول من 15 ثانية');
-    } else if (file.size > POST_IMAGE_MAX_BYTES) {
-      throw new Error('الصورة كبيرة، الحد الأقصى 8MB');
+  function _normPostItems(p){
+    if (Array.isArray(p.items) && p.items.length) return p.items;
+    return p.url ? [{ kind: p.type === 'video' ? 'video' : 'image', url: p.url }] : [];
+  }
+
+  function _postImgLoad(file){
+    return new Promise((res, rej) => {
+      if (file.size > POST_IMAGE_MAX_BYTES) return rej(new Error('الصورة كبيرة، الحد الأقصى 12MB'));
+      const url = URL.createObjectURL(file);
+      const im = new Image();
+      im.onload = () => res({ img: im, url });
+      im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('تعذّر فتح الصورة، جرّب صورة ثانية')); };
+      im.src = url;
+    });
+  }
+
+  /* يرسم الصورة بعد التدوير والقلب والقص (من المنتصف) */
+  function _postDraw(img, o, maxSide){
+    const sw = img.naturalWidth, sh = img.naturalHeight;
+    const rot = ((o.rot || 0) % 360 + 360) % 360;
+    const side = rot === 90 || rot === 270;
+    const w = side ? sh : sw, h = side ? sw : sh;
+    let cw = w, ch = h;
+    if (o.aspect && o.aspect !== 'orig') {
+      const [a, b] = o.aspect.split(':').map(Number);
+      const t = a / b;
+      if (w / h > t) cw = Math.round(h * t); else ch = Math.round(w / t);
     }
-    const dataUrl = await UI.fileToBase64(file, isVid ? POST_VIDEO_MAX_BYTES : POST_IMAGE_MAX_BYTES);
-    const ext = (file.type.split('/')[1] || 'bin').split('+')[0];
-    const { url } = await FB.uploadFile(FB.storagePath('posts', S.meUid, ext), dataUrl);
+    const sc = Math.min(1, maxSide / Math.max(cw, ch));
+    const ow = Math.max(1, Math.round(cw * sc)), oh = Math.max(1, Math.round(ch * sc));
+    const c = document.createElement('canvas');
+    c.width = ow; c.height = oh;
+    const x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, ow, oh);
+    x.translate(ow / 2, oh / 2);
+    x.rotate(rot * Math.PI / 180);
+    if (o.flip) x.scale(-1, 1);
+    const k = ow / cw;
+    x.scale(k, k);
+    x.drawImage(img, -sw / 2, -sh / 2, sw, sh);
+    return c;
+  }
+
+  /* عارض السحب الأفقي (مثل الإنستغرام): صور متعددة مع نقاط وعداد */
+  function _buildCarousel(slides, opts = {}){
+    const wrap = UI.el('div', `position:relative;width:100%;max-width:${opts.maxW || 480}px;height:${opts.h || '60vh'};background:#000;overflow:hidden;border-radius:${opts.radius || 0}px;direction:ltr`);
+    const track = UI.el('div', 'display:flex;flex-direction:row;width:100%;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;direction:ltr');
+    slides.forEach(sl => {
+      const slide = UI.el('div', 'flex:0 0 100%;width:100%;height:100%;scroll-snap-align:start;display:flex;align-items:center;justify-content:center');
+      const m = document.createElement(sl.kind === 'video' ? 'video' : 'img');
+      m.src = sl.url;
+      m.style.cssText = 'max-width:100%;max-height:100%;display:block;object-fit:contain';
+      if (sl.kind === 'video') { m.controls = true; m.playsInline = true; m.preload = 'metadata'; }
+      else m.alt = '';
+      slide.appendChild(m);
+      track.appendChild(slide);
+    });
+    wrap.appendChild(track);
+    if (slides.length > 1) {
+      const cnt = UI.el('div', 'position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:2px 9px;border-radius:10px;pointer-events:none');
+      const dots = UI.el('div', 'position:absolute;bottom:10px;left:0;right:0;display:flex;justify-content:center;gap:5px;pointer-events:none');
+      const dotEls = slides.map(() => { const d = UI.el('div', 'width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.45);transition:background .2s'); dots.appendChild(d); return d; });
+      const upd = () => {
+        const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+        cnt.textContent = `${i + 1}/${slides.length}`;
+        dotEls.forEach((d, j) => d.style.background = j === i ? '#fff' : 'rgba(255,255,255,.45)');
+      };
+      track.addEventListener('scroll', upd, { passive: true });
+      upd();
+      wrap.appendChild(cnt); wrap.appendChild(dots);
+    }
+    return wrap;
+  }
+
+  /* معاينة قبل النشر — زر نشر يطلب تأكيد */
+  function _openPostPreview(slides, onDone){
+    const isVid = slides.length === 1 && slides[0].kind === 'video';
+    const ov = UI.el('div', 'position:fixed;inset:0;z-index:997;background:#000;display:flex;flex-direction:column;direction:rtl');
+    const top = UI.el('div', 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;color:#fff;font-weight:700;font-size:15px');
+    const back = UI.el('button', 'background:none;border:none;color:#fff;font-size:15px;cursor:pointer;font-family:inherit');
+    back.textContent = 'رجوع';
+    const t = UI.el('span', ''); t.textContent = 'معاينة المنشور';
+    const pub = UI.el('button', 'background:none;border:none;color:var(--accent);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit');
+    pub.textContent = 'نشر';
+    top.appendChild(back); top.appendChild(t); top.appendChild(pub);
+    const stage = UI.el('div', 'flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:10px;box-sizing:border-box');
+    stage.appendChild(_buildCarousel(slides, { h: '72vh' }));
+    ov.appendChild(top); ov.appendChild(stage);
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    back.addEventListener('click', close);
+    pub.addEventListener('click', async () => {
+      const what = isVid ? 'المقطع' : (slides.length > 1 ? slides.length + ' صور' : 'الصورة');
+      if (!await UI.confirmDialog(`تأكيد نشر ${what} على صفحتك؟`, { confirmText: 'نشر' })) return;
+      pub.disabled = true;
+      try {
+        await _publishPost(slides, (i, n) => { pub.textContent = `${i}/${n}`; });
+        UI.toast('تم النشر ✓', 'success');
+        close();
+        if (onDone) onDone();
+      } catch (err) {
+        UI.toast(err.message || 'تعذّر النشر، حاول مرة ثانية', 'error');
+        pub.disabled = false; pub.textContent = 'نشر';
+      }
+    });
+  }
+
+  async function _publishPost(slides, onProgress){
+    const uid = S.meUid;
+    if (!uid) throw new Error('سجّل دخولك أولاً');
+    const out = [];
+    for (let i = 0; i < slides.length; i++) {
+      const sl = slides[i];
+      if (onProgress) onProgress(i + 1, slides.length);
+      const ext = sl.kind === 'video'
+        ? (((sl.data.type || 'video/mp4').split('/')[1] || 'mp4').split(';')[0])
+        : 'jpg';
+      const { url } = await FB.uploadFile(FB.storagePath('posts', uid, ext), sl.data);
+      out.push({ kind: sl.kind, url });
+    }
     const pid = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    await FB.upd(`userPosts/${S.meUid}`, { [pid]: { type: isVid ? 'video' : 'image', url, ts: Date.now() } });
+    const type = out.length > 1 ? 'carousel' : out[0].kind;
+    await FB.upd(`userPosts/${uid}`, { [pid]: { type, items: out, ts: Date.now() } });
     return pid;
   }
 
+  /* محرر الصور: قص 1:1 / 4:5 / أصلي، تدوير، قلب، حذف، إضافة (حتى 10) */
+  function _openPostEditor(initialFiles, onDone){
+    const items = [];
+    let cur = 0;
+    const ov = UI.el('div', 'position:fixed;inset:0;z-index:996;background:#000;display:flex;flex-direction:column;direction:rtl');
+    const top = UI.el('div', 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;color:#fff;font-weight:700;font-size:15px');
+    const cancelB = UI.el('button', 'background:none;border:none;color:#fff;font-size:15px;cursor:pointer;font-family:inherit'); cancelB.textContent = 'إلغاء';
+    const ttl = UI.el('span', ''); ttl.textContent = 'تعديل الصور';
+    const nextB = UI.el('button', 'background:none;border:none;color:var(--accent);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit'); nextB.textContent = 'التالي';
+    top.appendChild(cancelB); top.appendChild(ttl); top.appendChild(nextB);
+    const stage = UI.el('div', 'flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:8px;box-sizing:border-box');
+    const cv = document.createElement('canvas'); cv.style.cssText = 'max-width:100%;max-height:100%;border-radius:8px';
+    stage.appendChild(cv);
+    const tools = UI.el('div', 'display:flex;gap:8px;overflow-x:auto;padding:10px 12px;justify-content:center');
+    const thumbs = UI.el('div', 'display:flex;gap:6px;overflow-x:auto;padding:8px 12px 14px');
+    ov.appendChild(top); ov.appendChild(stage); ov.appendChild(tools); ov.appendChild(thumbs);
+
+    const close = () => { items.forEach(it => URL.revokeObjectURL(it.url)); ov.remove(); };
+    cancelB.addEventListener('click', close);
+
+    const btn = (label, fn) => {
+      const b = UI.el('button', 'flex-shrink:0;padding:8px 12px;border-radius:12px;border:1px solid #333;background:#1a1a1a;color:#fff;font-size:13px;font-family:inherit;cursor:pointer');
+      b.textContent = label; b.addEventListener('click', fn); return b;
+    };
+    const redraw = () => {
+      if (!items.length) { cv.width = 1; cv.height = 1; thumbs.innerHTML = ''; return; }
+      const c = _postDraw(items[cur].img, items[cur].o, 900);
+      cv.width = c.width; cv.height = c.height;
+      cv.getContext('2d').drawImage(c, 0, 0);
+      paintThumbs();
+    };
+    const paintThumbs = () => {
+      thumbs.innerHTML = '';
+      items.forEach((it, i) => {
+        const im = document.createElement('img');
+        im.src = it.url;
+        im.style.cssText = `width:54px;height:54px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:pointer;border:2px solid ${i === cur ? 'var(--accent)' : 'transparent'}`;
+        im.addEventListener('click', () => { cur = i; redraw(); });
+        thumbs.appendChild(im);
+      });
+      if (items.length < POST_MAX_IMAGES) {
+        const add = UI.el('button', 'width:54px;height:54px;flex-shrink:0;border-radius:8px;border:1px dashed #555;background:transparent;color:#aaa;font-size:22px;cursor:pointer');
+        add.textContent = '+';
+        add.addEventListener('click', () => addInp.click());
+        thumbs.appendChild(add);
+      }
+    };
+    const loadFiles = async (fl) => {
+      for (const f of fl) {
+        if (items.length >= POST_MAX_IMAGES) { UI.toast(`الحد الأقصى ${POST_MAX_IMAGES} صور`, 'info'); break; }
+        try {
+          const { img, url } = await _postImgLoad(f);
+          items.push({ img, url, o: { rot: 0, flip: false, aspect: 'orig' } });
+        } catch (err) { UI.toast(err.message, 'error'); }
+      }
+      if (items.length) { cur = Math.min(cur, items.length - 1); redraw(); }
+      else close();
+    };
+    const addInp = document.createElement('input');
+    addInp.type = 'file'; addInp.accept = 'image/*'; addInp.multiple = true; addInp.style.display = 'none';
+    addInp.addEventListener('change', e => { const fl = [...e.target.files]; e.target.value = ''; if (fl.length) loadFiles(fl); });
+    ov.appendChild(addInp);
+
+    const setAsp = a => { if (!items.length) return; items[cur].o.aspect = a; redraw(); };
+    const rot = d => { if (!items.length) return; items[cur].o.rot = (items[cur].o.rot + d + 360) % 360; redraw(); };
+    const flip = () => { if (!items.length) return; items[cur].o.flip = !items[cur].o.flip; redraw(); };
+    const del = () => {
+      if (!items.length) return;
+      URL.revokeObjectURL(items[cur].url); items.splice(cur, 1);
+      if (!items.length) { close(); return; }
+      cur = Math.max(0, cur - 1); redraw();
+    };
+    tools.append(btn('أصلي', () => setAsp('orig')), btn('1:1', () => setAsp('1:1')), btn('4:5', () => setAsp('4:5')),
+                 btn('↺', () => rot(-90)), btn('↻', () => rot(90)), btn('⇋ قلب', flip), btn('🗑 حذف', del));
+
+    nextB.addEventListener('click', () => {
+      if (!items.length) { UI.toast('اختر صورة واحدة على الأقل', 'info'); return; }
+      try {
+        const urls = items.map(it => _postDraw(it.img, it.o, 1080).toDataURL('image/jpeg', 0.85));
+        _openPostPreview(urls.map(u => ({ kind: 'image', url: u, data: u })), () => { close(); if (onDone) onDone(); });
+      } catch (err) { UI.toast('تعذّر تجهيز الصور، جرّب صور ثانية', 'error'); }
+    });
+
+    document.body.appendChild(ov);
+    if (initialFiles && initialFiles.length) loadFiles(initialFiles);
+  }
+
+  /* فيديو واحد — بدون تعديل، فقط معاينة ونشر */
+  async function _startVideoPost(file, onDone){
+    if (file.size > POST_VIDEO_MAX_BYTES) throw new Error('الفيديو كبير، الحد الأقصى 10MB');
+    const url = URL.createObjectURL(file);
+    try {
+      const dur = await new Promise((res, rej) => {
+        const v = document.createElement('video');
+        v.preload = 'metadata';
+        v.onloadedmetadata = () => res(v.duration);
+        v.onerror = () => rej(new Error('تعذّر قراءة الفيديو، جرّب مقطع ثاني'));
+        v.src = url;
+      });
+      if (!(dur <= POST_VIDEO_MAX_SEC + 0.5)) throw new Error('المقطع أطول من 15 ثانية');
+    } catch (err) { URL.revokeObjectURL(url); throw err; }
+    _openPostPreview([{ kind: 'video', url, data: file }], () => { URL.revokeObjectURL(url); if (onDone) onDone(); });
+  }
+
   function _openPostViewer(p){
-    const ov = UI.el('div', 'position:fixed;inset:0;z-index:995;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box');
-    const el = p.type === 'video' ? document.createElement('video') : document.createElement('img');
-    el.src = p.url;
-    if (p.type === 'video') { el.controls = true; el.autoplay = true; el.playsInline = true; }
-    el.style.cssText = 'max-width:100%;max-height:90vh;border-radius:10px';
-    ov.appendChild(el);
+    const slides = _normPostItems(p);
+    if (!slides.length) return;
+    const ov = UI.el('div', 'position:fixed;inset:0;z-index:995;background:rgba(0,0,0,.94);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box');
+    ov.appendChild(_buildCarousel(slides, { h: '80vh', maxW: 480 }));
     ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
   }
@@ -2091,14 +2323,22 @@
     Object.entries(posts || {})
       .sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0))
       .forEach(([, p]) => {
+        const items = _normPostItems(p);
+        if (!items.length) return;
+        const first = items[0];
         const cell = UI.el('div', `position:relative;aspect-ratio:1/1;overflow:hidden;border-radius:8px;background:${th().card2};cursor:pointer`);
-        const m = document.createElement(p.type === 'video' ? 'video' : 'img');
-        m.src = p.url;
-        if (p.type === 'video') { m.muted = true; m.playsInline = true; m.preload = 'metadata'; }
+        const m = document.createElement(first.kind === 'video' ? 'video' : 'img');
+        m.src = first.url;
+        if (first.kind === 'video') { m.muted = true; m.playsInline = true; m.preload = 'metadata'; }
         else m.alt = '';
         m.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
         cell.appendChild(m);
-        if (p.type === 'video') {
+        if (items.length > 1) {
+          const b = UI.el('div', 'position:absolute;top:5px;right:5px;font-size:12px;color:#fff;background:rgba(0,0,0,.55);border-radius:6px;padding:0 5px');
+          b.textContent = '⧉';
+          cell.appendChild(b);
+        }
+        if (first.kind === 'video') {
           const b = UI.el('div', 'position:absolute;bottom:5px;left:5px;font-size:11px;color:#fff;background:rgba(0,0,0,.55);border-radius:6px;padding:1px 6px');
           b.textContent = '▶';
           cell.appendChild(b);
@@ -2145,31 +2385,21 @@
     const bioSec=UI.el('div','margin-bottom:16px');const bioLbl=UI.el('label',`font-size:12px;color:${th().text2};font-weight:700;display:block;margin-bottom:6px`);bioLbl.textContent='النبذة الشخصية';bioSec.appendChild(bioLbl);const bioInp=UI.el('textarea',`width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;direction:rtl;resize:none;line-height:1.6;box-sizing:border-box`);bioInp.placeholder='اكتب شيئاً عن نفسك...';bioInp.maxLength=120;bioInp.value=eBio;bioInp.rows=2;const bioCnt=UI.el('div',`font-size:10px;color:${th().text3};text-align:left;margin-top:2px`);bioCnt.textContent=`${eBio.length}/120`;bioInp.addEventListener('input',e=>{eBio=e.target.value;bioCnt.textContent=`${eBio.length}/120`;});bioSec.appendChild(bioInp);bioSec.appendChild(bioCnt);inner.appendChild(bioSec);
     // Save
     const saveBtn=UI.el('button',`width:100%;padding:13px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:700;font-family:inherit;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(59,158,240,.4)`);saveBtn.textContent='حفظ التغييرات ✓';saveBtn.addEventListener('click',async()=>{await FB.upd(`users/${S.meUid}`,{bio:eBio.trim(),photo:ePhoto||null});UI.toast('تم حفظ التغييرات ✓','success');go('home');});inner.appendChild(saveBtn);
-    // Change password
-    let showPwd=false;const pwdToggle=UI.el('button',`width:100%;padding:11px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${th().text};font-family:inherit;font-size:14px;cursor:pointer;margin-bottom:10px`);pwdToggle.textContent='🔑 تغيير كلمة المرور';
-    const pwdForm=UI.el('div',`margin-bottom:10px;background:${th().card2};border:1px solid ${th().border};border-radius:14px;padding:16px;display:none`);
-    const mkPwd=(ph,ac)=>{const i=UI.el('input',`width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:13px;direction:rtl;box-sizing:border-box;margin-bottom:8px`);i.type='password';i.placeholder=ph;i.autocomplete=ac;return i;};
-    const pwdCur=mkPwd('كلمة المرور الحالية','current-password');const pwdNew=mkPwd('كلمة المرور الجديدة','new-password');const pwdNew2=mkPwd('تأكيد كلمة المرور الجديدة','new-password');
-    const pwdSubmit=UI.el('button','width:100%;padding:11px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer');pwdSubmit.textContent='تأكيد التغيير 🔐';
-    pwdSubmit.addEventListener('click',async()=>{const res=await Auth.changePassword(pwdCur.value,pwdNew.value,pwdNew2.value);if(res.error)UI.toast(res.error,'error');else{UI.toast('تم تغيير كلمة المرور 🔐','success');pwdCur.value=pwdNew.value=pwdNew2.value='';showPwd=false;pwdForm.style.display='none';pwdToggle.textContent='🔑 تغيير كلمة المرور';}});
-    pwdForm.appendChild(pwdCur);pwdForm.appendChild(pwdNew);pwdForm.appendChild(pwdNew2);pwdForm.appendChild(pwdSubmit);
-    pwdToggle.addEventListener('click',()=>{showPwd=!showPwd;pwdForm.style.display=showPwd?'block':'none';pwdToggle.textContent=showPwd?'🔑 إخفاء':'🔑 تغيير كلمة المرور';});inner.appendChild(pwdToggle);inner.appendChild(pwdForm);
-    // Theme toggle
-    const thBtn=UI.el('button',`width:100%;padding:11px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${th().text};font-family:inherit;font-size:14px;cursor:pointer;margin-bottom:10px`);thBtn.textContent=UI.isDark()?'☀️ وضع فاتح':'🌙 وضع داكن';thBtn.addEventListener('click',()=>{UI.toggleDark();S.dark=UI.isDark();renderScreen();});inner.appendChild(thBtn);
-    // Legal links
-    const legalRow=UI.el('div',`display:flex;justify-content:center;gap:14px;margin-bottom:14px;font-size:12px`);
-    const legalTerms=document.createElement('a');legalTerms.href='terms.html';legalTerms.target='_blank';legalTerms.rel='noopener noreferrer';legalTerms.textContent='الشروط والأحكام';legalTerms.style.cssText=`color:${th().text2};text-decoration:underline`;
-    const legalPriv=document.createElement('a');legalPriv.href='privacy.html';legalPriv.target='_blank';legalPriv.rel='noopener noreferrer';legalPriv.textContent='سياسة الخصوصية';legalPriv.style.cssText=`color:${th().text2};text-decoration:underline`;
-    legalRow.appendChild(legalTerms);legalRow.appendChild(legalPriv);inner.appendChild(legalRow);
-    // التشفير
-    const e2eBtn=UI.el('button',`width:100%;padding:11px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${th().text};font-family:inherit;font-size:14px;cursor:pointer;margin-bottom:10px`);e2eBtn.textContent='🔐 التشفير والنسخة الاحتياطية';e2eBtn.addEventListener('click',()=>_openE2EManage());inner.appendChild(e2eBtn);
-    // المنشورات (صور ومقاطع قصيرة)
+    // المنشورات
     const postsSec=UI.el('div','margin-top:8px;margin-bottom:16px');
     const pHead=UI.el('div','display:flex;align-items:center;justify-content:space-between;margin-bottom:10px');
     const pTitle=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700`); pTitle.textContent='منشوراتي';
-    const pAdd=UI.el('button',`padding:7px 14px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer`); pAdd.textContent='+ نشر';
-    const pIn=document.createElement('input'); pIn.type='file'; pIn.accept='image/*,video/*'; pIn.style.display='none';
-    pAdd.addEventListener('click',()=>pIn.click());
+    const pBtns=UI.el('div','display:flex;gap:6px');
+    const mkPBtn=t=>{const x=UI.el('button',`padding:7px 12px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer`);x.textContent=t;return x;};
+    const bImg=mkPBtn('+ صور'), bVid=mkPBtn('+ فيديو');
+    const iImg=document.createElement('input'); iImg.type='file'; iImg.accept='image/*'; iImg.multiple=true; iImg.style.display='none';
+    const iVid=document.createElement('input'); iVid.type='file'; iVid.accept='video/*'; iVid.style.display='none';
+    bImg.addEventListener('click',()=>iImg.click());
+    bVid.addEventListener('click',()=>iVid.click());
+    iImg.addEventListener('change',e=>{const fl=[...e.target.files];e.target.value='';if(fl.length)_openPostEditor(fl,()=>drawPosts());});
+    iVid.addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{await _startVideoPost(f,()=>drawPosts());}catch(err){UI.toast(err.message||'تعذّر تجهيز المقطع','error');}});
+    pBtns.appendChild(bImg); pBtns.appendChild(bVid);
+    pHead.appendChild(pTitle); pHead.appendChild(pBtns);
     const pGrid=UI.el('div','');
     const drawPosts=async()=>{
       pGrid.innerHTML='';
@@ -2177,20 +2407,12 @@
       try{ posts=(await FB.get(`userPosts/${S.meUid}`))||{}; }catch(e){}
       if(!Object.keys(posts).length){
         const em=UI.el('div',`text-align:center;color:${th().text3};font-size:13px;padding:26px 10px;border:1px dashed ${th().border};border-radius:14px`);
-        em.textContent='لا توجد منشورات بعد، اضغط + نشر';
+        em.textContent='لا توجد منشورات بعد، اضغط + صور أو + فيديو';
         pGrid.appendChild(em); return;
       }
       pGrid.appendChild(_buildPostsGrid(posts));
     };
-    pIn.addEventListener('change',async e=>{
-      const f=e.target.files[0]; e.target.value=''; if(!f) return;
-      pAdd.disabled=true; pAdd.textContent='...';
-      try{ await _uploadPost(f); UI.toast('تم النشر ✓','success'); await drawPosts(); }
-      catch(err){ UI.toast(err.message||'تعذّر النشر','error'); }
-      finally{ pAdd.disabled=false; pAdd.textContent='+ نشر'; }
-    });
-    pHead.appendChild(pTitle); pHead.appendChild(pAdd);
-    postsSec.appendChild(pHead); postsSec.appendChild(pIn); postsSec.appendChild(pGrid);
+    postsSec.appendChild(pHead); postsSec.appendChild(iImg); postsSec.appendChild(iVid); postsSec.appendChild(pGrid);
     inner.appendChild(postsSec);
     drawPosts();
     scroll.appendChild(inner);APP.appendChild(scroll);

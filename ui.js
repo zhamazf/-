@@ -49,7 +49,6 @@ window.UI = (function () {
   function getTheme() {
     const d = _dark;
     return {
-    attachSheetGestures,
       bg:        d ? '#07120d'  : '#fbe3d2',
       card:      d ? '#0e1d17'  : '#fff8f3',
       card2:     d ? '#13261e'  : '#fcefe6',
@@ -679,6 +678,7 @@ window.UI = (function () {
 
     // Toast
     toast,
+    attachSheetGestures,
 
     // Loading indicators
     btnLoading,

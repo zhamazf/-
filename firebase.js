@@ -245,7 +245,7 @@ window.FB = (function () {
   function uploadFile(path, dataUrl, onProgress) {
     return new Promise((resolve, reject) => {
       let blob;
-      try { blob = _dataURLtoBlob(dataUrl); }
+      try { blob = typeof dataUrl === 'string' ? _dataURLtoBlob(dataUrl) : dataUrl; }
       catch (e) { return reject(new Error('ملف غير صالح')); }
 
       const ref  = _storage.ref(path);
