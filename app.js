@@ -864,20 +864,62 @@
   }
 
   /* نافذة الإعدادات من الشريط السفلي */
-  function _openSettingsSheet(){
+  function _openSettingsSheet(view){
+    const close=()=>ov.remove();
     const ov=UI.el('div','position:fixed;inset:0;z-index:990;display:flex;align-items:flex-end;justify-content:center');
-    const bg=UI.el('div','position:absolute;inset:0;background:rgba(0,0,0,.5)'); bg.addEventListener('click',()=>ov.remove());
-    const sh=UI.el('div',`position:relative;width:100%;max-width:500px;background:${th().card};color:${th().text};border-radius:20px 20px 0 0;padding:20px 16px 28px;box-sizing:border-box`);
-    const rows=[
-      [UI.isDark()?'☀️  الوضع الفاتح':'🌙  الوضع الداكن',()=>{UI.toggleDark();S.dark=UI.isDark();ov.remove();renderScreen();}],
-      ['🔔  الإشعارات',()=>{ov.remove();_toggleNotifPanel();}],
-      ['👤  تعديل الملف الشخصي',()=>{ov.remove();go('profile');}],
-    ];
-    rows.forEach(([t,fn])=>{
-      const r=UI.el('button',`display:block;width:100%;text-align:right;padding:14px 14px;margin-bottom:8px;border:1px solid ${th().border};border-radius:14px;background:${th().card2};color:${th().text};font-size:15px;font-family:inherit;cursor:pointer`);
-      r.textContent=t; r.addEventListener('click',fn); sh.appendChild(r);
-    });
-    ov.appendChild(bg); ov.appendChild(sh); document.body.appendChild(ov);
+    const bg=UI.el('div','position:absolute;inset:0;background:rgba(0,0,0,.5)'); bg.addEventListener('click',close);
+    const sh=UI.el('div',`position:relative;width:100%;max-width:500px;max-height:88vh;overflow-y:auto;background:${th().card};color:${th().text};border-radius:20px 20px 0 0;padding:16px 16px 28px;box-sizing:border-box`);
+    const head=UI.el('div','display:flex;align-items:center;gap:10px;margin-bottom:14px');
+    const ttl=UI.el('div','flex:1;font-size:17px;font-weight:800');
+    const body=UI.el('div','');
+    const btn=(t,fn,danger)=>{const r=UI.el('button',`display:block;width:100%;text-align:right;padding:13px 14px;margin-bottom:8px;border:1px solid ${th().border};border-radius:14px;background:${th().card2};color:${danger?'#ef4444':th().text};font-size:14px;font-family:inherit;cursor:pointer`);r.textContent=t;r.addEventListener('click',fn);return r;};
+    const label=t=>{const l=UI.el('div',`font-size:11px;font-weight:700;color:${th().text3};letter-spacing:1px;margin:14px 4px 6px`);l.textContent=t;return l;};
+    const goProfile=()=>{close();go('profile');};
+
+    const showBlocked=async()=>{
+      body.innerHTML=''; ttl.textContent='المحظورون';
+      const blocked=await Auth.getBlockedUsers(S.meUid);
+      const ids=Object.keys(blocked||{});
+      if(!ids.length){const e=UI.el('div',`color:${th().text3};text-align:center;padding:30px 10px;font-size:14px`);e.textContent='لا يوجد مستخدمون محظورون';body.appendChild(e);return;}
+      ids.forEach(uid=>{
+        const row=UI.el('div',`display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:8px;border:1px solid ${th().border};border-radius:14px;background:${th().card2}`);
+        const nm=UI.el('div','flex:1;font-size:14px;font-weight:700');nm.textContent=_nameByUid(uid)||uid;
+        const ub=UI.el('button',`padding:7px 12px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer`);ub.textContent='إلغاء الحظر';
+        ub.addEventListener('click',async()=>{const r=await Auth.unblockUser(S.meUid,uid);if(r&&r.error){UI.toast(r.error,'error');return;}UI.toast('تم إلغاء الحظر','success');showBlocked();});
+        row.appendChild(nm);row.appendChild(ub);body.appendChild(row);
+      });
+    };
+
+    const showMain=()=>{
+      body.innerHTML=''; ttl.textContent='الإعدادات';
+      body.appendChild(label('الحساب'));
+      body.appendChild(btn('👤  تعديل الملف الشخصي',goProfile));
+      body.appendChild(btn('✉️  تغيير البريد الإلكتروني',goProfile));
+      body.appendChild(btn('🔑  تغيير كلمة المرور',goProfile));
+      body.appendChild(btn('📱  تغيير رقم الهاتف',()=>UI.toast('غير متاح: الحسابات مبنية على البريد الإلكتروني','info')));
+      body.appendChild(label('المظهر والإشعارات'));
+      body.appendChild(btn(UI.isDark()?'☀️  الوضع الفاتح':'🌙  الوضع الداكن',()=>{UI.toggleDark();S.dark=UI.isDark();close();renderScreen();}));
+      body.appendChild(btn('🔔  الإشعارات',()=>{close();_toggleNotifPanel();}));
+      body.appendChild(label('الخصوصية والأمان'));
+      body.appendChild(btn('🚫  المحظورون',()=>{showBlocked();}));
+      body.appendChild(btn('🔐  معلومات التشفير',goProfile));
+      body.appendChild(btn('📄  سياسة الخصوصية',()=>window.open('privacy.html','_blank','noopener')));
+      body.appendChild(btn('📜  الشروط والأحكام',()=>window.open('terms.html','_blank','noopener')));
+      body.appendChild(label('منطقة الخطر'));
+      body.appendChild(btn('🚪  تسجيل الخروج',async()=>{
+        if(!await UI.confirmDialog('هل تريد تسجيل الخروج؟',{confirmText:'خروج',danger:true}))return;
+        Chat.goOffline(S.meUid);try{E2E.reset();}catch(e){}await Auth.logout();S.me=null;S.meUid=null;S.usersByName={};location.reload();
+      },true));
+      body.appendChild(btn('🗑  حذف الحساب',goProfile,true));
+    };
+
+    const back=UI.el('button',`background:none;border:none;color:var(--accent);font-size:20px;cursor:pointer;padding:0 6px;display:none`);back.textContent='›';
+    back.addEventListener('click',()=>{showMain();back.style.display='none';});
+    const x=UI.el('button',`background:none;border:none;color:${th().text2};font-size:18px;cursor:pointer;padding:0 6px`);x.textContent='✕';x.addEventListener('click',close);
+    head.appendChild(back);head.appendChild(ttl);head.appendChild(x);
+    sh.appendChild(head);sh.appendChild(body);
+    ov.appendChild(bg);ov.appendChild(sh);document.body.appendChild(ov);
+    if(view==='blocked'){back.style.display='';showBlocked();} else showMain();
   }
 
   /* رأس القائمة: بحث + إعدادات بجانبه */
