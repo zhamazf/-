@@ -615,7 +615,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline-color:va
 #home-content{padding:14px 16px 110px !important;background:var(--bg)}
 #nb-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 #nb-stories{background:transparent !important;border:none !important;padding:0 0 14px !important}
-#home-tabs{position:fixed !important;bottom:16px;left:50%;transform:translateX(-50%);width:min(70vw,220px);z-index:50;display:flex;gap:6px;padding:6px !important;box-sizing:border-box;border:1px solid var(--border);border-radius:999px;background:var(--card);box-shadow:0 10px 30px rgba(0,0,0,.18)}
+#home-tabs{position:fixed !important;bottom:16px;left:50%;transform:translateX(-50%);width:min(90vw,300px);z-index:50;display:flex;gap:4px;padding:6px !important;box-sizing:border-box;border:1px solid var(--border);border-radius:999px;background:var(--card);box-shadow:0 10px 30px rgba(0,0,0,.18)}
 #home-tabs .tab{flex:1;display:flex;align-items:center;justify-content:center;border:none !important;border-radius:999px;padding:11px 0 !important;background:transparent;color:var(--text3)}
 #home-tabs .tab.active{background:var(--acc22);color:var(--accent) !important}
 .nb-row{background:transparent !important;border:none !important;border-bottom:1px solid var(--border) !important;border-radius:0 !important;padding:14px 4px !important;margin:0 !important;box-shadow:none !important}

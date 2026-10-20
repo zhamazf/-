@@ -805,8 +805,6 @@
     const fBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:20px;padding:4px;position:relative'); fBtn.textContent='👥'; fBtn.setAttribute('aria-label','الأصدقاء');
     const pr=pendingReqs(); if(pr.length){const d=UI.el('div','position:absolute;top:0;right:0;background:#ef4444;color:#fff;font-size:8px;font-weight:700;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center');d.textContent=pr.length;fBtn.appendChild(d);}
     fBtn.addEventListener('click',()=>go('friends')); bar.appendChild(fBtn);
-    const nBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:20px;padding:4px;position:relative'); nBtn.id='notif-bell'; nBtn.textContent='🔔'; nBtn.setAttribute('aria-label','الإشعارات');
-    nBtn.addEventListener('click',_toggleNotifPanel); bar.appendChild(nBtn); _updateNotifBadge(nBtn);
     const dBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:20px;padding:4px');
     dBtn.textContent=UI.isDark()?'☀️':'🌙'; dBtn.setAttribute('aria-label',UI.isDark()?'تفعيل الوضع الفاتح':'تفعيل الوضع الداكن'); dBtn.addEventListener('click',()=>{UI.toggleDark();S.dark=UI.isDark();renderScreen();}); bar.appendChild(dBtn);
     return bar;
@@ -842,19 +840,44 @@
   const _NB_ICONS={
     chats:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
     groups:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    user:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     settings:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
   };
   function buildHomeTabs(){
     if(S.tab==='unread') S.tab='chats';
     const tabs=UI.el('div','');
     tabs.id='home-tabs';
-    [['chats','الخاصة'],['groups','المجموعات']].forEach(([k,l])=>{
+    const items=[['groups','المجموعات'],['chats','الخاصة'],['settings','الإعدادات'],['user','الملف']];
+    items.forEach(([k,l])=>{
       const b=UI.el('button'); b.className='tab'+(S.tab===k?' active':''); b.setAttribute('aria-label',l);
       b.innerHTML=_NB_ICONS[k];
-      b.addEventListener('click',()=>{S.tab=k;tabs.querySelectorAll('.tab').forEach((x,i)=>x.classList.toggle('active',S.tab===['chats','groups'][i]));const c=document.getElementById('home-content');if(c)renderTabContent(c);});
+      b.addEventListener('click',()=>{
+        if(k==='settings'){_openSettingsSheet();return;}
+        if(k==='user'){go('profile');return;}
+        S.tab=k;
+        tabs.querySelectorAll('.tab').forEach((x,i)=>x.classList.toggle('active',S.tab===items[i][0]));
+        const c=document.getElementById('home-content');if(c)renderTabContent(c);
+      });
       tabs.appendChild(b);
     });
     return tabs;
+  }
+
+  /* نافذة الإعدادات من الشريط السفلي */
+  function _openSettingsSheet(){
+    const ov=UI.el('div','position:fixed;inset:0;z-index:990;display:flex;align-items:flex-end;justify-content:center');
+    const bg=UI.el('div','position:absolute;inset:0;background:rgba(0,0,0,.5)'); bg.addEventListener('click',()=>ov.remove());
+    const sh=UI.el('div',`position:relative;width:100%;max-width:500px;background:${th().card};color:${th().text};border-radius:20px 20px 0 0;padding:20px 16px 28px;box-sizing:border-box`);
+    const rows=[
+      [UI.isDark()?'☀️  الوضع الفاتح':'🌙  الوضع الداكن',()=>{UI.toggleDark();S.dark=UI.isDark();ov.remove();renderScreen();}],
+      ['🔔  الإشعارات',()=>{ov.remove();_toggleNotifPanel();}],
+      ['👤  تعديل الملف الشخصي',()=>{ov.remove();go('profile');}],
+    ];
+    rows.forEach(([t,fn])=>{
+      const r=UI.el('button',`display:block;width:100%;text-align:right;padding:14px 14px;margin-bottom:8px;border:1px solid ${th().border};border-radius:14px;background:${th().card2};color:${th().text};font-size:15px;font-family:inherit;cursor:pointer`);
+      r.textContent=t; r.addEventListener('click',fn); sh.appendChild(r);
+    });
+    ov.appendChild(bg); ov.appendChild(sh); document.body.appendChild(ov);
   }
 
   /* رأس القائمة: بحث + إعدادات بجانبه */
@@ -864,10 +887,10 @@
     const inp=UI.el('input',`flex:1;min-width:0;padding:11px 16px;border-radius:999px;border:1px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;font-family:inherit;box-sizing:border-box;direction:rtl;outline:none`);
     inp.placeholder='بحث';
     inp.addEventListener('input',()=>{const q=inp.value.trim();document.querySelectorAll('#home-content .nb-row').forEach(r=>{r.style.display=(!q||r.textContent.includes(q))?'':'none';});});
-    const sBtn=UI.el('button','flex-shrink:0;width:42px;height:42px;border-radius:50%;border:1px solid '+th().inpBorder+';background:'+th().card+';color:'+th().text+';display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0');
-    sBtn.innerHTML=_NB_ICONS.settings; sBtn.setAttribute('aria-label','الإعدادات');
-    sBtn.addEventListener('click',()=>go('profile'));
-    row.appendChild(inp); row.appendChild(sBtn);
+    const nBtn=UI.el('button',`flex-shrink:0;width:40px;height:40px;border-radius:50%;border:1px solid ${th().inpBorder};background:${th().card};color:${th().text};display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;font-size:17px`);
+    nBtn.id='notif-bell'; nBtn.textContent='🔔'; nBtn.setAttribute('aria-label','الإشعارات');
+    nBtn.addEventListener('click',_toggleNotifPanel); _updateNotifBadge(nBtn);
+    row.appendChild(inp); row.appendChild(nBtn);
     return row;
   }
 
