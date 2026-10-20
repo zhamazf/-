@@ -890,6 +890,51 @@
       });
     };
 
+    const PREF_DEFAULTS={visibility:'public',whoMessage:'everyone',lastSeen:true,readReceipts:true,typing:true};
+    const getPrefs=()=>({...PREF_DEFAULTS,...((S.users[S.meUid]||{}).prefs||{})});
+    const savePref=async(k,v)=>{
+      try{
+        await FB.upd(`users/${S.meUid}/prefs`,{[k]:v});
+        S.users[S.meUid]=S.users[S.meUid]||{};
+        S.users[S.meUid].prefs={...getPrefs(),[k]:v};
+        UI.toast('تم الحفظ','success');
+      }catch(e){UI.toast('تعذّر الحفظ، حاول مرة ثانية','error');}
+      showPrivacy();
+    };
+    const choiceRow=(title,key,opts)=>{
+      const cur=getPrefs()[key];
+      const wrap=UI.el('div',`margin-bottom:12px;padding:12px;border:1px solid ${th().border};border-radius:14px;background:${th().card2}`);
+      const t=UI.el('div','font-size:14px;font-weight:700;margin-bottom:8px');t.textContent=title;wrap.appendChild(t);
+      const row=UI.el('div','display:flex;gap:8px');
+      opts.forEach(([v,l])=>{const on=cur===v;const b=UI.el('button',`flex:1;padding:9px 6px;border-radius:10px;border:1px solid ${on?'var(--accent)':th().border};background:${on?'var(--acc22)':'transparent'};color:${on?'var(--accent)':th().text2};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer`);b.textContent=l;b.addEventListener('click',()=>{if(!on)savePref(key,v);});row.appendChild(b);});
+      wrap.appendChild(row);return wrap;
+    };
+    const toggleRow=(title,key,note)=>{
+      const on=!!getPrefs()[key];
+      const wrap=UI.el('div',`display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:12px;border:1px solid ${th().border};border-radius:14px;background:${th().card2};cursor:pointer`);
+      const txt=UI.el('div','flex:1;min-width:0');
+      const t=UI.el('div','font-size:14px;font-weight:700');t.textContent=title;txt.appendChild(t);
+      if(note){const n=UI.el('div',`font-size:11px;color:${th().text3};margin-top:3px`);n.textContent=note;txt.appendChild(n);}
+      const sw=UI.el('div',`width:44px;height:26px;border-radius:13px;background:${on?'var(--accent)':th().border};position:relative;flex-shrink:0;transition:background .2s`);
+      const kn=UI.el('div',`position:absolute;top:3px;${on?'left:21px':'left:3px'};width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s`);
+      sw.appendChild(kn);wrap.appendChild(txt);wrap.appendChild(sw);
+      wrap.addEventListener('click',()=>savePref(key,!on));
+      return wrap;
+    };
+    const showPrivacy=()=>{
+      body.innerHTML=''; ttl.textContent='إعدادات الخصوصية'; back.style.display='';
+      body.appendChild(label('من يرى حسابي'));
+      body.appendChild(choiceRow('حالة الحساب','visibility',[['public','عام'],['private','خاص']]));
+      body.appendChild(choiceRow('من يقدر يراسلني','whoMessage',[['everyone','الجميع'],['friends','الأصدقاء فقط']]));
+      body.appendChild(label('الظهور والمحادثات'));
+      body.appendChild(toggleRow('إظهار آخر ظهور','lastSeen','عند إيقافه لا يظهر وقت آخر ظهور لك'));
+      body.appendChild(toggleRow('إيصالات القراءة (✓✓)','readReceipts','عند إيقافه لا يعرف الطرف الآخر أنك قرأت الرسالة'));
+      body.appendChild(toggleRow('مؤشر الكتابة','typing','عند إيقافه لا يظهر لغيرك أنك تكتب'));
+      const note=UI.el('div',`font-size:11px;color:${th().text3};line-height:1.6;margin-top:10px;padding:0 4px`);
+      note.textContent='ملاحظة: هذه الإعدادات تُحفظ الآن على حسابك. تطبيقها الكامل على الآخرين يحتاج تحديث قواعد Firebase، وسيتم لاحقاً.';
+      body.appendChild(note);
+    };
+
     const showMain=()=>{
       body.innerHTML=''; ttl.textContent='الإعدادات';
       body.appendChild(label('الحساب'));
@@ -901,6 +946,7 @@
       body.appendChild(btn(UI.isDark()?'☀️  الوضع الفاتح':'🌙  الوضع الداكن',()=>{UI.toggleDark();S.dark=UI.isDark();close();renderScreen();}));
       body.appendChild(btn('🔔  الإشعارات',()=>{close();_toggleNotifPanel();}));
       body.appendChild(label('الخصوصية والأمان'));
+      body.appendChild(btn('🛡  إعدادات الخصوصية',()=>{showPrivacy();}));
       body.appendChild(btn('🚫  المحظورون',()=>{showBlocked();}));
       body.appendChild(btn('🔐  معلومات التشفير',goProfile));
       body.appendChild(btn('📄  سياسة الخصوصية',()=>window.open('privacy.html','_blank','noopener')));
