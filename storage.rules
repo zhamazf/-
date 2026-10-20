@@ -16,7 +16,7 @@ service firebase.storage {
 
       allow create: if request.auth != null
                     && request.auth.uid == uid
-                    && folder in ['images', 'videos', 'voices', 'stories']
+                    && folder in ['images', 'videos', 'voices', 'stories', 'posts']
                     && request.resource.size < 10 * 1024 * 1024
                     && request.resource.contentType.matches('(image|video|audio)/.*')
                     && !request.resource.contentType.matches('image/svg.*');
