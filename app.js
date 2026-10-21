@@ -39,6 +39,7 @@
   /* ═══════════════════════════════════════════════════════════
      STATE
   ═══════════════════════════════════════════════════════════ */
+  let _profileEdit = false; // وضع تعديل الملف الشخصي (الافتراضي: عرض كما يراه الآخرون)
   const S = {
     me:           Auth.getUser(),      // username (display)
     meUid:        null,                // Firebase UID (groups, security)
@@ -148,6 +149,7 @@
       if (_historyStack.length > 30) _historyStack.shift();
     }
 
+    if(screen!=='profile') _profileEdit=false;
     S.screen=screen; S.activeId=id; S.panel=false; S.groupEdit=false; S.msgs=[];
     if (screen==='dm'&&id&&S.meUid) { const _t=_uidByName(id)||id; Chat.markRead(Chat.dmKey(S.meUid,_t), S.meUid); }
     if (screen==='group'&&id&&S.meUid) Chat.markGroupRead(id, S.meUid); // v2
@@ -167,7 +169,8 @@
       if (S.screen==='dm'||S.screen==='group') Chat.clearTyping(S.me, chatId(), S.screen);
       stopMsgListener();
       _seenMsgIds.clear();
-      S.screen=screen; S.activeId=id; S.panel=false; S.groupEdit=false; S.msgs=[];
+      if(screen!=='profile') _profileEdit=false;
+    S.screen=screen; S.activeId=id; S.panel=false; S.groupEdit=false; S.msgs=[];
       renderScreen();
       if (screen==='dm'&&id)    startMsgListener('dm',id);
       if (screen==='group'&&id) startMsgListener('group',id);
@@ -2481,9 +2484,74 @@
     rebuildUserMaps();
   }
 
-  function renderProfile(){
+  /* قسم منشورات صاحب الحساب (إضافة + شبكة) — يُستخدم في العرض والتعديل */
+  function _ownPostsSection(){
+    const postsSec=UI.el('div','margin-top:8px;margin-bottom:16px');
+    const pHead=UI.el('div','display:flex;align-items:center;justify-content:space-between;margin-bottom:10px');
+    const pTitle=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700`); pTitle.textContent='منشوراتي';
+    const pBtns=UI.el('div','display:flex;gap:6px');
+    const mkPBtn=t=>{const x=UI.el('button',`padding:7px 12px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer`);x.textContent=t;return x;};
+    const bImg=mkPBtn('+ صور'), bVid=mkPBtn('+ فيديو');
+    const iImg=document.createElement('input'); iImg.type='file'; iImg.accept='image/*'; iImg.multiple=true; iImg.style.display='none';
+    const iVid=document.createElement('input'); iVid.type='file'; iVid.accept='video/*'; iVid.style.display='none';
+    bImg.addEventListener('click',()=>iImg.click());
+    bVid.addEventListener('click',()=>iVid.click());
+    iImg.addEventListener('change',e=>{const fl=[...e.target.files];e.target.value='';if(fl.length)_openPostEditor(fl,()=>drawPosts());});
+    iVid.addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{await _startVideoPost(f,()=>drawPosts());}catch(err){UI.toast(err.message||'تعذّر تجهيز المقطع','error');}});
+    pBtns.appendChild(bImg); pBtns.appendChild(bVid);
+    pHead.appendChild(pTitle); pHead.appendChild(pBtns);
+    const pGrid=UI.el('div','');
+    const drawPosts=async()=>{
+      pGrid.innerHTML='';
+      let posts={};
+      try{ posts=(await FB.get(`userPosts/${S.meUid}`))||{}; }catch(e){}
+      if(!Object.keys(posts).length){
+        const em=UI.el('div',`text-align:center;color:${th().text3};font-size:13px;padding:26px 10px;border:1px dashed ${th().border};border-radius:14px`);
+        em.textContent='لا توجد منشورات بعد، اضغط + صور أو + فيديو';
+        pGrid.appendChild(em); return;
+      }
+      pGrid.appendChild(_buildPostsGrid(posts));
+    };
+    postsSec.appendChild(pHead); postsSec.appendChild(iImg); postsSec.appendChild(iVid); postsSec.appendChild(pGrid);
+    return { el: postsSec, draw: drawPosts };
+  }
+
+  /* العرض: الملف كما يراه الآخرون + زر تعديل */
+  function renderProfileView(){
     const meData = S.users[S.meUid] || S.usersByName[S.me] || {};
     APP.appendChild(buildSimpleTopbar('ملفي الشخصي'));
+    const scroll=UI.el('div','flex:1;overflow-y:auto;padding:20px;-webkit-overflow-scrolling:touch;text-align:center');
+    const inner=UI.el('div','max-width:400px;margin:0 auto;text-align:center');
+    const avW=UI.el('div','margin-bottom:14px;display:inline-block');
+    avW.appendChild(UI.makeAvatar({...meData,username:S.me},100,{online:true}));
+    if(meData.photo){avW.style.cursor='pointer';avW.addEventListener('click',()=>{S.viewImg=meData.photo;showImgViewer();});}
+    inner.appendChild(avW);
+    const nm=UI.el('div',`font-weight:800;font-size:22px;color:${th().text};margin-bottom:2px`);nm.textContent=meData.displayName||S.me;inner.appendChild(nm);
+    if(meData.displayName){const un=UI.el('div',`font-size:13px;color:${th().text3};margin-bottom:6px;direction:ltr`);un.textContent='@'+S.me;inner.appendChild(un);}
+    const dets=[['العنوان',meData.title],['الدراسة',meData.study],['الجنس',({male:'ذكر',female:'أنثى'})[meData.gender]],['المدينة',meData.city]].filter(x=>x[1]);
+    const ctc=meData.contact||{};
+    if(dets.length||ctc.email||ctc.phone){const dv=UI.el('div',`font-size:13px;color:${th().text2};line-height:1.9;margin:8px 0 12px`);dets.forEach(([k,v])=>{const r=UI.el('div','');r.textContent=`${k}: ${v}`;dv.appendChild(r);});if(ctc.email){const r=UI.el('div','direction:ltr');r.textContent=ctc.email;dv.appendChild(r);}if(ctc.phone){const r=UI.el('div','direction:ltr');r.textContent=ctc.phone;dv.appendChild(r);}inner.appendChild(dv);}
+    if(meData.bio){const bio=UI.el('div',`color:${th().text2};font-size:14px;padding:0 20px;line-height:1.6;margin-bottom:12px`);bio.textContent=meData.bio;inner.appendChild(bio);}
+    const editBtn=UI.el('button','width:100%;padding:12px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:8px');
+    editBtn.innerHTML=UI.label('edit','تعديل الملف الشخصي');
+    editBtn.addEventListener('click',()=>{_profileEdit=true;renderScreen();});
+    inner.appendChild(editBtn);
+    const _ps=_ownPostsSection(); _ps.el.style.textAlign='right'; inner.appendChild(_ps.el); _ps.draw();
+    scroll.appendChild(inner);APP.appendChild(scroll);
+  }
+
+  function renderProfile(){
+    if (!_profileEdit) { renderProfileView(); return; }
+    renderProfileEdit();
+  }
+
+  function renderProfileEdit(){
+    const meData = S.users[S.meUid] || S.usersByName[S.me] || {};
+    const tb = buildSimpleTopbar('تعديل الملف الشخصي');
+    const bk = tb.firstChild; const nb = bk.cloneNode(true);
+    nb.addEventListener('click', () => { _profileEdit = false; renderScreen(); });
+    bk.replaceWith(nb);
+    APP.appendChild(tb);
     const scroll=UI.el('div','flex:1;overflow-y:auto;padding:20px;-webkit-overflow-scrolling:touch'); const inner=UI.el('div','max-width:400px;margin:0 auto');
     let ePhoto=meData.photo||null,eEmoji=meData.emoji||'',eBio=meData.bio||'';
     const avSec=UI.el('div','text-align:center;margin-bottom:24px'); const avWrap=UI.el('div','position:relative;display:inline-block'); const avEl=UI.el('div','');
@@ -2523,37 +2591,8 @@
     // Bio
     const bioSec=UI.el('div','margin-bottom:16px');const bioLbl=UI.el('label',`font-size:12px;color:${th().text2};font-weight:700;display:block;margin-bottom:6px`);bioLbl.textContent='النبذة الشخصية';bioSec.appendChild(bioLbl);const bioInp=UI.el('textarea',`width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;direction:rtl;resize:none;line-height:1.6;box-sizing:border-box`);bioInp.placeholder='اكتب شيئاً عن نفسك...';bioInp.maxLength=120;bioInp.value=eBio;bioInp.rows=2;const bioCnt=UI.el('div',`font-size:10px;color:${th().text3};text-align:left;margin-top:2px`);bioCnt.textContent=`${eBio.length}/120`;bioInp.addEventListener('input',e=>{eBio=e.target.value;bioCnt.textContent=`${eBio.length}/120`;});bioSec.appendChild(bioInp);bioSec.appendChild(bioCnt);inner.appendChild(bioSec);
     // Save
-    const saveBtn=UI.el('button',`width:100%;padding:13px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:700;font-family:inherit;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(59,158,240,.4)`);saveBtn.textContent='حفظ التغييرات ✓';saveBtn.addEventListener('click',async()=>{try{await FB.upd(`users/${S.meUid}`,{bio:eBio.trim(),photo:ePhoto||null,displayName:iName.value.trim()||null,title:iTitle.value.trim()||null,study:iStudy.value.trim()||null,city:iCity.value.trim()||null,gender:gSel.value||null});await FB.set(`userData/${S.meUid}/phone`,iPhone.value.trim()||null);await _syncContact();UI.toast('تم حفظ التغييرات ✓','success');go('home');}catch(e){UI.toast('تعذّر الحفظ، حاول مرة ثانية','error');}});inner.appendChild(saveBtn);
-    // المنشورات
-    const postsSec=UI.el('div','margin-top:8px;margin-bottom:16px');
-    const pHead=UI.el('div','display:flex;align-items:center;justify-content:space-between;margin-bottom:10px');
-    const pTitle=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700`); pTitle.textContent='منشوراتي';
-    const pBtns=UI.el('div','display:flex;gap:6px');
-    const mkPBtn=t=>{const x=UI.el('button',`padding:7px 12px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer`);x.textContent=t;return x;};
-    const bImg=mkPBtn('+ صور'), bVid=mkPBtn('+ فيديو');
-    const iImg=document.createElement('input'); iImg.type='file'; iImg.accept='image/*'; iImg.multiple=true; iImg.style.display='none';
-    const iVid=document.createElement('input'); iVid.type='file'; iVid.accept='video/*'; iVid.style.display='none';
-    bImg.addEventListener('click',()=>iImg.click());
-    bVid.addEventListener('click',()=>iVid.click());
-    iImg.addEventListener('change',e=>{const fl=[...e.target.files];e.target.value='';if(fl.length)_openPostEditor(fl,()=>drawPosts());});
-    iVid.addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{await _startVideoPost(f,()=>drawPosts());}catch(err){UI.toast(err.message||'تعذّر تجهيز المقطع','error');}});
-    pBtns.appendChild(bImg); pBtns.appendChild(bVid);
-    pHead.appendChild(pTitle); pHead.appendChild(pBtns);
-    const pGrid=UI.el('div','');
-    const drawPosts=async()=>{
-      pGrid.innerHTML='';
-      let posts={};
-      try{ posts=(await FB.get(`userPosts/${S.meUid}`))||{}; }catch(e){}
-      if(!Object.keys(posts).length){
-        const em=UI.el('div',`text-align:center;color:${th().text3};font-size:13px;padding:26px 10px;border:1px dashed ${th().border};border-radius:14px`);
-        em.textContent='لا توجد منشورات بعد، اضغط + صور أو + فيديو';
-        pGrid.appendChild(em); return;
-      }
-      pGrid.appendChild(_buildPostsGrid(posts));
-    };
-    postsSec.appendChild(pHead); postsSec.appendChild(iImg); postsSec.appendChild(iVid); postsSec.appendChild(pGrid);
-    inner.appendChild(postsSec);
-    drawPosts();
+    const saveBtn=UI.el('button',`width:100%;padding:13px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:700;font-family:inherit;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(59,158,240,.4)`);saveBtn.textContent='حفظ التغييرات ✓';saveBtn.addEventListener('click',async()=>{try{await FB.upd(`users/${S.meUid}`,{bio:eBio.trim(),photo:ePhoto||null,displayName:iName.value.trim()||null,title:iTitle.value.trim()||null,study:iStudy.value.trim()||null,city:iCity.value.trim()||null,gender:gSel.value||null});await FB.set(`userData/${S.meUid}/phone`,iPhone.value.trim()||null);await _syncContact();S.users[S.meUid]={...(S.users[S.meUid]||{}),bio:eBio.trim(),displayName:iName.value.trim()||null,title:iTitle.value.trim()||null,study:iStudy.value.trim()||null,city:iCity.value.trim()||null,gender:gSel.value||null};rebuildUserMaps();UI.toast('تم حفظ التغييرات ✓','success');_profileEdit=false;renderScreen();}catch(e){UI.toast('تعذّر الحفظ، حاول مرة ثانية','error');}});inner.appendChild(saveBtn);
+    const _ps=_ownPostsSection(); inner.appendChild(_ps.el); _ps.draw();
     scroll.appendChild(inner);APP.appendChild(scroll);
   }
 
