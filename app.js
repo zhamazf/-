@@ -1132,6 +1132,65 @@
     return row;
   }
 
+  /* ── استكشاف المجموعات: العامة والخاصة تظهر للجميع (الخاصة بطلب انضمام) ── */
+  const _dirSynced = new Set();
+  function _buildDiscovery(){
+    const sec = UI.el('div','margin-bottom:16px');
+    const hdr = UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:8px`);
+    hdr.textContent = 'استكشاف المجموعات';
+    const list = UI.el('div','');
+    sec.appendChild(hdr); sec.appendChild(list);
+    const mine = new Set(myGroups().map(g => g.id));
+    // مزامنة دليل مجموعاتي التي أدمنها (للمجموعات القديمة قبل ظهور الدليل)
+    myGroups().forEach(g => { if (g.admin === S.meUid && !_dirSynced.has(g.id)) { _dirSynced.add(g.id); Groups.syncDirectory(g.id, g); } });
+    Groups.listDirectory().then(dir => {
+      if (!list.isConnected) return;
+      const rows = Object.entries(dir || {})
+        .filter(([gid, d]) => d && !mine.has(gid))
+        .sort((a, b) => String(a[1].name || '').localeCompare(String(b[1].name || '')));
+      if (!rows.length) {
+        const e = UI.el('div',`color:${th().text3};font-size:13px;padding:8px 0`);
+        e.textContent = 'لا توجد مجموعات أخرى حالياً';
+        list.appendChild(e); return;
+      }
+      rows.forEach(([gid, d]) => list.appendChild(_discoveryRow(gid, d)));
+    });
+    return sec;
+  }
+  function _discoveryRow(gid, d){
+    const isPub = d.privacy === 'public';
+    const row = UI.el('div',`display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:${th().card};border:1px solid ${th().border};margin-bottom:6px`);
+    const av = UI.el('div','width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0');
+    av.textContent = (d.name || '?').charAt(0);
+    const info = UI.el('div','flex:1;min-width:0');
+    const nm = UI.el('div',`font-weight:700;font-size:14px;color:${th().text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);
+    nm.textContent = d.name || '';
+    const sub = UI.el('div',`font-size:11px;color:${th().text3};margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);
+    sub.textContent = (isPub ? 'عامة' : 'خاصة') + (d.description ? ' · ' + d.description : '');
+    info.appendChild(nm); info.appendChild(sub);
+    const btn = UI.el('button','padding:7px 12px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0');
+    btn.textContent = isPub ? 'انضمام' : 'طلب انضمام';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      if (isPub) {
+        const r = await Groups.joinPublic(S.me, gid);
+        if (r && r.ok) {
+          UI.toast(`انضممت إلى ${d.name || 'المجموعة'} ✓`, 'success');
+          row.remove();
+          setTimeout(refreshChatList, 800);
+          return;
+        }
+        if (!(r && r.needsRequest)) { UI.toast((r && r.error) || 'تعذّر الانضمام', 'error'); btn.disabled = false; return; }
+      }
+      const r = await Groups.requestJoin(S.me, gid);
+      if (r && r.error) { UI.toast(r.error, 'info'); btn.disabled = false; return; }
+      UI.toast('تم إرسال طلب الانضمام ✓', 'success');
+      btn.textContent = 'تم إرسال الطلب';
+    });
+    row.appendChild(av); row.appendChild(info); row.appendChild(btn);
+    return row;
+  }
+
   function renderTabContent(container){
     container.innerHTML='';
     if(container.id==='home-content'){ container.appendChild(buildListHead()); if(_storyWrap) container.appendChild(_storyWrap); }
@@ -1165,7 +1224,7 @@
     } else if(S.tab==='groups'){
       const btnRow=UI.el('div','display:flex;gap:8px;margin-bottom:14px');
       const ngBtn=UI.el('button','flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:13px;font-family:inherit;cursor:pointer'); ngBtn.textContent='+ مجموعة جديدة'; ngBtn.addEventListener('click',()=>go('newGroup')); btnRow.appendChild(ngBtn);
-      const jnBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'var(--accent)':'var(--accent)'};font-weight:700;font-size:13px;font-family:inherit;cursor:pointer`); jnBtn.innerHTML=UI.label('link','انضمام'); jnBtn.addEventListener('click',()=>go('join')); btnRow.appendChild(jnBtn); container.appendChild(btnRow);
+      const jnBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'var(--accent)':'var(--accent)'};font-weight:700;font-size:13px;font-family:inherit;cursor:pointer`); jnBtn.innerHTML=UI.label('link','انضمام'); jnBtn.addEventListener('click',()=>go('join')); btnRow.appendChild(jnBtn); container.appendChild(btnRow); container.appendChild(_buildDiscovery());
       const allG=myGroups().map(g=>{const ts=_groupLastTs(g);return {g,ts,pin:_pref('group',g.id).pinned||0,bucket:_chatBucket('group',g.id,ts)};});
       const grps=allG.filter(x=>x.bucket==='main').sort(_sortChats).map(x=>x.g);
       const archG=allG.filter(x=>x.bucket==='archived').sort(_sortChats).map(x=>x.g);

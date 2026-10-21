@@ -363,6 +363,25 @@
         },
         ".write": "auth !== null && $uid === auth.uid && !newData.exists()"
       }
+    },
+    "groupDirectory": {
+      ".read": "auth !== null",
+      "$gid": {
+        ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())",
+        ".validate": "newData.hasChildren(['name','privacy'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 300"
+        },
+        "privacy": {
+          ".validate": "newData.val() === 'public' || newData.val() === 'private'"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }
