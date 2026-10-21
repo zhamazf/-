@@ -205,35 +205,7 @@
   navigator.serviceWorker.addEventListener('message', function(e) {
     if (!e.data) return;
 
-    // تحديث جديد متاح
-    if (e.data.type === 'SW_UPDATED') {
-      var banner = document.createElement('div');
-      banner.style.cssText =
-        'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);' +
-        'z-index:99999;background:#3b9ef0;color:#fff;padding:12px 20px;' +
-        'border-radius:14px;font-size:13px;font-weight:700;direction:rtl;' +
-        'display:flex;align-items:center;gap:12px;' +
-        'box-shadow:0 4px 20px rgba(99,102,241,.5)';
-      var txt = document.createElement('span');
-      txt.textContent = '✨ يوجد تحديث جديد';
-      var btn = document.createElement('button');
-      btn.textContent = 'تحديث';
-      btn.style.cssText =
-        'border:none;background:#fff;color:#3b9ef0;padding:6px 14px;' +
-        'border-radius:8px;font-weight:700;cursor:pointer;font-size:12px';
-      btn.onclick = function() { location.reload(); };
-      var closeBtn = document.createElement('button');
-      closeBtn.textContent = '✕';
-      closeBtn.style.cssText =
-        'border:none;background:transparent;color:#fff;cursor:pointer;font-size:16px;padding:0 4px';
-      closeBtn.onclick = function() { banner.remove(); };
-      banner.appendChild(txt);
-      banner.appendChild(btn);
-      banner.appendChild(closeBtn);
-      document.body.appendChild(banner);
-      // يختفي تلقائياً بعد 10 ثوان
-      setTimeout(function() { if(banner.parentNode) banner.remove(); }, 10000);
-    }
+    // (تم إلغاء إشعار "يوجد تحديث": التحديث يظهر تلقائياً عند فتح التطبيق)
 
     // تم مسح الـ cache
     if (e.data.type === 'CACHE_CLEARED') {
