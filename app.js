@@ -2456,16 +2456,28 @@
 
   /* حذف الحساب — من الإعدادات فقط */
   async function _deleteAccountFlow(){
-    if (!await UI.confirmDialog('هل تريد حذف حسابك نهائياً؟', { confirmText: 'حذف الحساب', cancelText: 'إلغاء', danger: true })) return;
-    let pwd = '';
-    if (Auth.hasPassword()) { pwd = prompt('أدخل كلمة مرورك للتأكيد:'); if (!pwd) return; }
-    const dmPartners = Object.keys(S.usersByName)
-      .filter(u => u !== S.me)
-      .map(u => _uidByName(u))
-      .filter(Boolean);
-    const res = await Auth.deleteAccount(S.me, pwd, S.groups, dmPartners);
-    if (res.error) UI.toast(res.error, 'error');
-    else { S.me = null; S.meUid = null; S.usersByName = {}; go('auth'); }
+    try{
+      const ok = await UI.confirmDialog('هل تريد حذف حسابك نهائياً؟ لا يمكن التراجع عن ذلك.', { confirmText: 'حذف الحساب', cancelText: 'إلغاء', danger: true });
+      if (!ok) return;
+      let pwd = '';
+      if (Auth.hasPassword()) {
+        pwd = prompt('أدخل كلمة مرورك للتأكيد:');
+        if (!pwd) { UI.toast('لم يتم حذف الحساب','info'); return; }
+      }
+      const dmPartners = Object.keys(S.usersByName || {})
+        .filter(u => u !== S.me)
+        .map(u => _uidByName(u))
+        .filter(Boolean);
+      UI.toast('جارٍ حذف الحساب...','info',6000);
+      const res = await Auth.deleteAccount(S.me, pwd, S.groups || {}, dmPartners);
+      if (res && res.error) { UI.toast(res.error,'error'); return; }
+      UI.toast('تم حذف الحساب','success');
+      S.me = null; S.meUid = null; S.usersByName = {};
+      setTimeout(() => location.reload(), 600);
+    }catch(e){
+      console.error('delete account',e);
+      UI.toast('تعذّر حذف الحساب: '+(e.code||e.message||'خطأ'),'error');
+    }
   }
 
   /* مزامنة الإيميل والرقم العامّين: يُكتبان في users/{uid}/contact فقط إذا لم يُخفيا */
@@ -2591,7 +2603,24 @@
     // Bio
     const bioSec=UI.el('div','margin-bottom:16px');const bioLbl=UI.el('label',`font-size:12px;color:${th().text2};font-weight:700;display:block;margin-bottom:6px`);bioLbl.textContent='النبذة الشخصية';bioSec.appendChild(bioLbl);const bioInp=UI.el('textarea',`width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;direction:rtl;resize:none;line-height:1.6;box-sizing:border-box`);bioInp.placeholder='اكتب شيئاً عن نفسك...';bioInp.maxLength=120;bioInp.value=eBio;bioInp.rows=2;const bioCnt=UI.el('div',`font-size:10px;color:${th().text3};text-align:left;margin-top:2px`);bioCnt.textContent=`${eBio.length}/120`;bioInp.addEventListener('input',e=>{eBio=e.target.value;bioCnt.textContent=`${eBio.length}/120`;});bioSec.appendChild(bioInp);bioSec.appendChild(bioCnt);inner.appendChild(bioSec);
     // Save
-    const saveBtn=UI.el('button',`width:100%;padding:13px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:700;font-family:inherit;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(59,158,240,.4)`);saveBtn.textContent='حفظ التغييرات ✓';saveBtn.addEventListener('click',async()=>{try{await FB.upd(`users/${S.meUid}`,{bio:eBio.trim(),photo:ePhoto||null,displayName:iName.value.trim()||null,title:iTitle.value.trim()||null,study:iStudy.value.trim()||null,city:iCity.value.trim()||null,gender:gSel.value||null});await FB.set(`userData/${S.meUid}/phone`,iPhone.value.trim()||null);await _syncContact();S.users[S.meUid]={...(S.users[S.meUid]||{}),bio:eBio.trim(),displayName:iName.value.trim()||null,title:iTitle.value.trim()||null,study:iStudy.value.trim()||null,city:iCity.value.trim()||null,gender:gSel.value||null};rebuildUserMaps();UI.toast('تم حفظ التغييرات ✓','success');_profileEdit=false;renderScreen();}catch(e){UI.toast('تعذّر الحفظ، حاول مرة ثانية','error');}});inner.appendChild(saveBtn);
+    const saveBtn=UI.el('button',`width:100%;padding:13px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:700;font-family:inherit;margin-bottom:10px;cursor:pointer;box-shadow:0 4px 14px rgba(59,158,240,.4)`);saveBtn.textContent='حفظ التغييرات ✓';saveBtn.addEventListener('click',async()=>{
+      if(!S.meUid){UI.toast('الجلسة غير جاهزة، أعد فتح التطبيق','error');return;}
+      const vals={bio:eBio.trim(),displayName:iName.value.trim(),title:iTitle.value.trim(),study:iStudy.value.trim(),city:iCity.value.trim(),gender:gSel.value||'',phone:iPhone.value.trim()};
+      if(vals.displayName.length>40||vals.title.length>60||vals.study.length>60||vals.city.length>40||vals.bio.length>120){UI.toast('بعض الحقول أطول من المسموح','error');return;}
+      saveBtn.disabled=true;saveBtn.style.opacity='.6';
+      const oldTxt=saveBtn.textContent;saveBtn.textContent='جارٍ الحفظ...';
+      try{
+        await FB.upd(`users/${S.meUid}`,{bio:vals.bio||null,photo:ePhoto||null,displayName:vals.displayName||null,title:vals.title||null,study:vals.study||null,city:vals.city||null,gender:vals.gender||null});
+      }catch(e){console.error('save profile',e);UI.toast('تعذّر حفظ الملف: '+(e.code||e.message||'خطأ'),'error');saveBtn.disabled=false;saveBtn.style.opacity='';saveBtn.textContent=oldTxt;return;}
+      try{ await FB.set(`userData/${S.meUid}/phone`,vals.phone||null); }
+      catch(e){console.error('save phone',e);UI.toast('تم حفظ الملف، لكن تعذّر حفظ الرقم','error');}
+      try{ await _syncContact(); }catch(e){console.error('sync contact',e);}
+      S.users[S.meUid]={...(S.users[S.meUid]||{}),bio:vals.bio,photo:ePhoto||null,displayName:vals.displayName||null,title:vals.title||null,study:vals.study||null,city:vals.city||null,gender:vals.gender||null};
+      try{rebuildUserMaps();}catch(e){console.error(e);}
+      UI.toast('تم حفظ التغييرات ✓','success');
+      _profileEdit=false;renderScreen();
+    });
+    inner.appendChild(saveBtn);
     const _ps=_ownPostsSection(); inner.appendChild(_ps.el); _ps.draw();
     scroll.appendChild(inner);APP.appendChild(scroll);
   }
