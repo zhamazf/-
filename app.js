@@ -3030,19 +3030,74 @@
 
   /* ── إيماءات عامة: السحب من حافة الشاشة = رجوع، والسحب بين تبويبات الرئيسية ── */
   (function _globalGestures(){
-    let gx=0,gy=0,gEdge=null,gOn=false,gT=0;
+    let gx=0,gy=0,gEdge=null,gOn=false,gT=0,gHoriz=false;
+    // تبويبات المحتوى الرئيسي بترتيبها في الكود (groups ثم chats)
+    const HTABS=['groups','chats'];
+    const BAR=['groups','chats','settings','user'];
     const blockedTarget=el=>!!(el&&el.closest&&el.closest('input,textarea,select,[data-no-swipe],#img-viewer,#fwd-ov,#story-viewer-ov,#story-preview-ov,#story-inner'));
+    const homeC=()=>document.getElementById('home-content');
+    const canHomeSwipe=()=>S.screen==='home'&&!!homeC();
+    const barSync=()=>document.querySelectorAll('#home-tabs .tab').forEach((b,i)=>b.classList.toggle('active',BAR[i]===S.tab));
+    const settleHome=(c,dx)=>{
+      c.style.transition='transform .2s ease-out';
+      c.style.transform='translate3d(0,0,0)';
+    };
+
     document.addEventListener('touchstart',e=>{
-      gOn=false;
+      gOn=false;gHoriz=false;
       if(e.touches.length!==1||!S.me)return;
       const t=e.touches[0];gx=t.clientX;gy=t.clientY;gT=Date.now();
       const W=window.innerWidth;
       gEdge=gx<=26?'left':(gx>=W-26?'right':null);
       gOn=true;
     },{passive:true});
+
+    // أثناء السحب: المحتوى يتحرك مع الإصبع (سلس)
+    document.addEventListener('touchmove',e=>{
+      if(!gOn||gEdge||!canHomeSwipe()||blockedTarget(e.target))return;
+      const t=e.touches[0];const dx=t.clientX-gx,dy=t.clientY-gy;
+      if(!gHoriz){
+        if(Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.5)return;
+        gHoriz=true;
+      }
+      const i=HTABS.indexOf(S.tab);
+      const ni=dx>0?i+1:i-1;
+      const hasNeighbor=ni>=0&&ni<HTABS.length;
+      const off=hasNeighbor?dx:dx*0.25; // مقاومة عند الأطراف
+      const c=homeC();if(!c)return;
+      c.style.transition='none';
+      c.style.transform=`translate3d(${off}px,0,0)`;
+    },{passive:true});
+
     document.addEventListener('touchend',e=>{
-      if(!gOn)return;gOn=false;
+      const wasOn=gOn;gOn=false;
       const t=e.changedTouches[0];const dx=t.clientX-gx,dy=t.clientY-gy;
+
+      // سحب أفقي على الرئيسية: تبديل التبويب أو الرجوع للمكان
+      if(gHoriz&&canHomeSwipe()){
+        gHoriz=false;
+        const c=homeC();
+        const W=window.innerWidth;
+        const i=HTABS.indexOf(S.tab);
+        const ni=dx>0?i+1:i-1;
+        const commit=ni>=0&&ni<HTABS.length&&Math.abs(dx)>Math.min(90,W*0.22)&&Date.now()-gT<900;
+        if(!commit){settleHome(c,dx);return;}
+        const dir=dx>0?1:-1;
+        c.style.transition='transform .2s ease-in';
+        c.style.transform=`translate3d(${dir*W}px,0,0)`;
+        setTimeout(()=>{
+          S.tab=HTABS[ni];barSync();
+          renderTabContent(c);
+          c.style.transition='none';
+          c.style.transform=`translate3d(${-dir*W*0.3}px,0,0)`;
+          void c.offsetWidth;
+          c.style.transition='transform .28s cubic-bezier(.2,.8,.2,1)';
+          c.style.transform='translate3d(0,0,0)';
+        },200);
+        return;
+      }
+      gHoriz=false;
+      if(!wasOn)return;
       if(Math.abs(dy)>70||Math.abs(dx)<70||Date.now()-gT>700)return;
       if(blockedTarget(e.target))return;
       if(S.screen&&S.screen!=='home'&&S.screen!=='auth'){
@@ -3052,12 +3107,12 @@
           const fo=document.getElementById('fwd-ov');if(fo){fo.remove();return;}
           goBack();
         }
-      }else if(S.screen==='home'&&!gEdge){
-        const tabs=['chats','groups','unread'];const i=tabs.indexOf(S.tab);
-        const ni=dx>0?i+1:i-1; // واجهة RTL: السحب لليمين = التبويب التالي
-        const btns=document.querySelectorAll('.tab');
-        if(ni>=0&&ni<tabs.length&&btns[ni])btns[ni].click();
       }
+    },{passive:true});
+
+    document.addEventListener('touchcancel',()=>{
+      gOn=false;
+      if(gHoriz){gHoriz=false;const c=homeC();if(c)settleHome(c,0);}
     },{passive:true});
   })();
 
