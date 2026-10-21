@@ -2246,32 +2246,73 @@
 
   /* عارض السحب الأفقي (مثل الإنستغرام): صور متعددة مع نقاط وعداد */
   function _buildCarousel(slides, opts = {}){
-    const wrap = UI.el('div', `position:relative;width:100%;max-width:${opts.maxW || 480}px;height:${opts.h || '60vh'};background:#000;overflow:hidden;border-radius:${opts.radius || 0}px;direction:ltr`);
-    const track = UI.el('div', 'display:flex;flex-direction:row;width:100%;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;direction:ltr');
+    const n = slides.length;
+    const wrap = UI.el('div', `position:relative;width:100%;max-width:${opts.maxW || 480}px;height:${opts.h || '60vh'};background:#000;overflow:hidden;border-radius:${opts.radius || 0}px;direction:ltr;touch-action:pan-y`);
+    const track = UI.el('div', 'display:flex;flex-direction:row;width:100%;height:100%;will-change:transform;direction:ltr');
     slides.forEach(sl => {
-      const slide = UI.el('div', 'flex:0 0 100%;width:100%;height:100%;scroll-snap-align:start;display:flex;align-items:center;justify-content:center');
+      const slide = UI.el('div', 'flex:0 0 100%;width:100%;height:100%;display:flex;align-items:center;justify-content:center');
       const m = document.createElement(sl.kind === 'video' ? 'video' : 'img');
-      m.src = sl.url;
+      m.src = sl.kind === 'video' ? sl.url + '#t=0.1' : sl.url;
       m.style.cssText = 'max-width:100%;max-height:100%;display:block;object-fit:contain';
-      if (sl.kind === 'video') { m.controls = true; m.playsInline = true; m.preload = 'metadata'; }
+      if (sl.kind === 'video') { m.controls = true; m.playsInline = true; m.setAttribute('playsinline', ''); m.preload = 'metadata'; }
       else m.alt = '';
       slide.appendChild(m);
       track.appendChild(slide);
     });
     wrap.appendChild(track);
-    if (slides.length > 1) {
-      const cnt = UI.el('div', 'position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:2px 9px;border-radius:10px;pointer-events:none');
-      const dots = UI.el('div', 'position:absolute;bottom:10px;left:0;right:0;display:flex;justify-content:center;gap:5px;pointer-events:none');
-      const dotEls = slides.map(() => { const d = UI.el('div', 'width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.45);transition:background .2s'); dots.appendChild(d); return d; });
-      const upd = () => {
-        const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
-        cnt.textContent = `${i + 1}/${slides.length}`;
-        dotEls.forEach((d, j) => d.style.background = j === i ? '#fff' : 'rgba(255,255,255,.45)');
-      };
-      track.addEventListener('scroll', upd, { passive: true });
+
+    let cur = 0, W = 0, sx = 0, sy = 0, dx = 0, drag = false, horiz = null;
+    const cnt = UI.el('div', 'position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:2px 9px;border-radius:10px;pointer-events:none');
+    const dots = UI.el('div', 'position:absolute;bottom:10px;left:0;right:0;display:flex;justify-content:center;gap:5px;pointer-events:none');
+    const dotEls = slides.map(() => { const d = UI.el('div', 'width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.45);transition:background .2s'); dots.appendChild(d); return d; });
+    const upd = () => {
+      cnt.textContent = `${cur + 1}/${n}`;
+      dotEls.forEach((d, j) => d.style.background = j === cur ? '#fff' : 'rgba(255,255,255,.45)');
+    };
+    const setPos = (px, anim) => {
+      track.style.transition = anim ? 'transform .3s cubic-bezier(.2,.8,.2,1)' : 'none';
+      track.style.transform = `translate3d(${px}px,0,0)`;
+    };
+    const goTo = i => {
+      cur = Math.max(0, Math.min(n - 1, i));
+      W = wrap.clientWidth || 1;
+      setPos(-cur * W, true);
       upd();
+    };
+    if (n > 1) {
+      wrap.addEventListener('touchstart', e => {
+        if (e.touches.length !== 1) return;
+        W = wrap.clientWidth || 1;
+        sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+        dx = 0; drag = true; horiz = null;
+      }, { passive: true });
+      wrap.addEventListener('touchmove', e => {
+        if (!drag) return;
+        const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+        if (horiz === null) {
+          if (Math.abs(x) < 8 && Math.abs(y) < 8) return;
+          horiz = Math.abs(x) > Math.abs(y);
+        }
+        if (!horiz) return;
+        dx = x;
+        // مقاومة عند أول/آخر صورة
+        const off = (cur === 0 && dx > 0) || (cur === n - 1 && dx < 0) ? dx * 0.3 : dx;
+        setPos(-cur * W + off, false);
+      }, { passive: true });
+      const endDrag = () => {
+        if (!drag) return;
+        drag = false;
+        if (!horiz) { goTo(cur); return; }
+        const th = Math.min(60, W * 0.2);
+        if (dx < -th) goTo(cur + 1);
+        else if (dx > th) goTo(cur - 1);
+        else goTo(cur);
+      };
+      wrap.addEventListener('touchend', endDrag, { passive: true });
+      wrap.addEventListener('touchcancel', endDrag, { passive: true });
       wrap.appendChild(cnt); wrap.appendChild(dots);
     }
+    upd();
     return wrap;
   }
 
