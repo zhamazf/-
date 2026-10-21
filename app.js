@@ -2450,8 +2450,9 @@
         const first = items[0];
         const cell = UI.el('div', `position:relative;aspect-ratio:1/1;overflow:hidden;border-radius:8px;background:${th().card2};cursor:pointer`);
         const m = document.createElement(first.kind === 'video' ? 'video' : 'img');
-        m.src = first.url;
-        if (first.kind === 'video') { m.muted = true; m.playsInline = true; m.preload = 'metadata'; }
+        // للفيديو: #t=0.1 يجبر المتصفح يعرض أول إطار بدل خانة سوداء/فارغة
+        m.src = first.kind === 'video' ? first.url + '#t=0.1' : first.url;
+        if (first.kind === 'video') { m.muted = true; m.playsInline = true; m.setAttribute('playsinline',''); m.preload = 'metadata'; }
         else m.alt = '';
         m.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
         cell.appendChild(m);
