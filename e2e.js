@@ -99,6 +99,9 @@ window.E2E = (function () {
     const FB = deps.FB;
     const store = deps.store;
 
+    // مفتاح إيقاف التشفير مؤقتاً: false → لا يُنشر أي مفتاح، والرسائل تُرسل كنص عادي
+    const E2E_ENABLED = false;
+
     let _uid = null;
     let _dev = null;           // { id, kid, pub, priv:CryptoKey, created }
     let _ready = false;
@@ -162,6 +165,7 @@ window.E2E = (function () {
 
     /** يهيّئ هوية هذا الجهاز وينشرها تلقائياً. */
     async function init(uid) {
+      if (!E2E_ENABLED) { _status = 'disabled'; _ready = false; return _status; }
       _uid = uid; _ready = false; _dev = null; _kekCache.clear(); _msgCache.clear(); _devCache.clear();
       if (!subtle) { _status = 'unsupported'; return _status; }
       try {
@@ -198,6 +202,7 @@ window.E2E = (function () {
 
     /** أجهزة الطرف الآخر (truthy إن كان يدعم التشفير) */
     async function getPeerKey(peerUid, fresh) {
+      if (!E2E_ENABLED) return null;
       const d = await getDevices(peerUid, fresh);
       return d.length ? { devices: d } : null;
     }
@@ -346,6 +351,7 @@ window.E2E = (function () {
       canEncryptTo, getPeerKey, encryptMessage, decryptMessage, decryptList, decryptMap, reencryptEdit,
       safetyNumber,
       isReady: () => _ready,
+      isEnabled: () => E2E_ENABLED,
       status: () => _status,
       lastError: () => _lastError,
       myKid: () => _dev && _dev.kid,

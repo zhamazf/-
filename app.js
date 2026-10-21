@@ -3292,7 +3292,7 @@
     if (!pk) { lk2.innerHTML = UI.icon('unlock',14); lk2.style.opacity = '.55'; lk2.title = 'غير مشفّرة'; return; }
     lk2.style.opacity = '1';
     if (E2E.isReady()) { lk2.innerHTML = UI.icon('lock',14); lk2.title = 'مشفّرة طرف-لطرف'; }
-    else { lk2.innerHTML = UI.icon('alert',14); lk2.title = 'التشفير غير جاهز'; }
+    else if (E2E.isEnabled && E2E.isEnabled()) { lk2.innerHTML = UI.icon('alert',14); lk2.title = 'التشفير غير جاهز'; }
   }
 
   UI.applyTheme();
