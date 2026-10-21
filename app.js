@@ -472,6 +472,19 @@
     return wrap;
   }
 
+  /* الضغط على نص الإشعار: يفتح الشيء المرتبط به */
+  function _openNotifTarget(n){
+    const name = S.users[n.fromUid]?.username || '';
+    if (n.type === 'friend_request' || n.type === 'friend_accept') {
+      _closeNotifPanel();
+      if (name) go('userProfile', name); else go('friends');
+      return;
+    }
+    if (n.type === 'group_add' && n.gid) {
+      _closeNotifPanel();
+      go('group', n.gid);
+    }
+  }
   function _fillNotifPanel() {
     if (!_notifPanel) return;
     const t = th(); _notifPanel.textContent = '';
@@ -490,7 +503,7 @@
       const tx = UI.el('div', `font-size:13px;color:${t.text};line-height:1.5`); tx.textContent = _notifText(n);
       const tm = UI.el('div', `font-size:11px;color:${t.text3};margin-top:2px`); tm.textContent = _notifAgo(n.ts);
       body.appendChild(tx); body.appendChild(tm);
-      body.addEventListener('click', () => { if (!n.read) _markNotifsRead([nid]); });
+      body.addEventListener('click', () => { if (!n.read) _markNotifsRead([nid]); _openNotifTarget(n); });
       if (n.type === 'friend_request') {
         if (_incomingReq(n.fromUid)) row.appendChild(_friendReqBtns(n.fromUid, S.users[n.fromUid]?.username));
         else { const done = UI.el('div', `font-size:11px;color:${t.text3};flex-shrink:0`); done.textContent = 'تم الرد'; row.appendChild(done); }
