@@ -34,7 +34,7 @@ const dmk=(a,b)=>[a,b].sort().join('_');
   const B2=E2E.create({FB,store:memStore()}); await B2.init('bob');
   eq('جهازان لـ bob', Object.keys(db).filter(k=>k.startsWith('userDevices/bob/')).length, 2);
   const old=await B2.decryptMessage(K,Object.assign({id:'m1'},m1));
-  eq('الجهاز الجديد لا يفتح القديم', [old._undecryptable,old.text.includes('🔒')], [true,true]);
+  eq('الجهاز الجديد لا يفتح القديم', [old._undecryptable,old.text.includes('رسالة مشفّرة')], [true,true]);
   const m2=await A.encryptMessage(K,'bob',base('alice'),{type:'text',text:'بعد الجهاز الجديد'});
   eq('الجهاز الجديد يفتح الجديد', (await B2.decryptMessage(K,Object.assign({id:'m2'},m2))).text, 'بعد الجهاز الجديد');
   eq('الجهاز القديم يفتحه أيضاً', (await B.decryptMessage(K,Object.assign({id:'m2'},m2))).text, 'بعد الجهاز الجديد');

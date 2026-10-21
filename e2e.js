@@ -296,9 +296,9 @@ window.E2E = (function () {
         const out = Object.assign({}, m);
         delete out.e2e;
         out.type = 'text';
-        out.text = _ready ? '🔒 رسالة مشفّرة — أُرسلت قبل ربط هذا الجهاز' : '🔒 رسالة مشفّرة';
+        out.text = _ready ? 'رسالة مشفّرة — أُرسلت قبل ربط هذا الجهاز': 'رسالة مشفّرة';
         out._undecryptable = true; out._enc = true;
-        if (m.replyTo) out.replyTo = Object.assign({}, m.replyTo, { text: '🔒' });
+        if (m.replyTo) out.replyTo = Object.assign({}, m.replyTo, { text: ''});
         return out;
       }
     }

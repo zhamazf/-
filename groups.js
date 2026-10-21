@@ -568,7 +568,7 @@ window.Groups = (function () {
         ts:     Date.now(),
         type:   'poll',
         pollId: ref.key || ref.id || ref,
-        text:   `📊 ${question.trim()}`,
+        text:   `${question.trim()}`,
       });
 
       return { ok: true, pollId: ref.key || ref.id || ref };
