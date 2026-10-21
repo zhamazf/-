@@ -797,7 +797,7 @@
     const stInner=UI.el('div','display:flex;gap:12px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none');
     stWrap.id='nb-stories';
     stInner.id='story-inner'; buildStoryInner(stInner); stWrap.appendChild(stInner); _storyWrap=stWrap;
-    APP.appendChild(buildHomeTabs());
+    const _tabsEl=buildHomeTabs(); APP.appendChild(_tabsEl); _homePill(_barIdx(S.tab),false);
     const content=UI.el('div','flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch');
     content.id='home-content'; APP.appendChild(content); renderTabContent(content);
   }
@@ -857,6 +857,22 @@
     user:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     settings:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
   };
+  const _BAR_KEYS=['groups','chats','settings','user'];
+  const _barIdx=k=>{const i=_BAR_KEYS.indexOf(k);return i<0?1:i;};
+  /* المؤشر المنزلق في الشريط السفلي: pos رقم عشري (مثلاً 1.5 = منتصف بين الخانتين) */
+  function _homePill(pos,anim){
+    const tabs=document.getElementById('home-tabs'); if(!tabs) return;
+    let pill=tabs.querySelector('.tab-pill');
+    if(!pill){pill=document.createElement('div');pill.className='tab-pill';tabs.insertBefore(pill,tabs.firstChild);}
+    const bs=[...tabs.querySelectorAll('.tab')]; if(!bs.length) return;
+    const p=Math.max(0,Math.min(bs.length-1,pos));
+    const i0=Math.floor(p), i1=Math.min(bs.length-1,i0+1), f=p-i0;
+    const a=bs[i0], b=bs[i1];
+    if(!a.offsetWidth) return;
+    pill.style.transition=anim?'left .25s cubic-bezier(.2,.8,.2,1),width .25s cubic-bezier(.2,.8,.2,1)':'none';
+    pill.style.left=(a.offsetLeft+(b.offsetLeft-a.offsetLeft)*f)+'px';
+    pill.style.width=(a.offsetWidth+(b.offsetWidth-a.offsetWidth)*f)+'px';
+  }
   function buildHomeTabs(){
     if(S.tab==='unread') S.tab='chats';
     const tabs=UI.el('div','');
@@ -870,6 +886,7 @@
         if(k==='user'){go('profile');return;}
         S.tab=k;
         tabs.querySelectorAll('.tab').forEach((x,i)=>x.classList.toggle('active',S.tab===items[i][0]));
+        _homePill(_barIdx(S.tab),true);
         const c=document.getElementById('home-content');if(c)renderTabContent(c);
       });
       tabs.appendChild(b);
@@ -3154,17 +3171,15 @@
   /* ── إيماءات عامة: السحب من حافة الشاشة = رجوع، والسحب بين تبويبات الرئيسية ── */
   (function _globalGestures(){
     let gx=0,gy=0,gEdge=null,gOn=false,gT=0,gHoriz=false;
-    // تبويبات المحتوى الرئيسي بترتيبها في الكود (groups ثم chats)
-    const HTABS=['groups','chats'];
+    // ترتيب الشريط السفلي كما يظهر (من اليمين لليسار)
     const BAR=['groups','chats','settings','user'];
+    // التبويبات اللي محتواها يتحرك مع الإصبع داخل الرئيسية
+    const CONTENT=['groups','chats'];
     const blockedTarget=el=>!!(el&&el.closest&&el.closest('input,textarea,select,[data-no-swipe],#img-viewer,#fwd-ov,#story-viewer-ov,#story-preview-ov,#story-inner'));
     const homeC=()=>document.getElementById('home-content');
     const canHomeSwipe=()=>S.screen==='home'&&!!homeC();
-    const barSync=()=>document.querySelectorAll('#home-tabs .tab').forEach((b,i)=>b.classList.toggle('active',BAR[i]===S.tab));
-    const settleHome=(c,dx)=>{
-      c.style.transition='transform .2s ease-out';
-      c.style.transform='translate3d(0,0,0)';
-    };
+    const curBI=()=>_barIdx(S.tab);
+    const settleHome=c=>{c.style.transition='transform .2s ease-out';c.style.transform='translate3d(0,0,0)';};
 
     document.addEventListener('touchstart',e=>{
       gOn=false;gHoriz=false;
@@ -3175,7 +3190,7 @@
       gOn=true;
     },{passive:true});
 
-    // أثناء السحب: المحتوى يتحرك مع الإصبع (سلس)
+    // أثناء السحب: المؤشر يتحرك مع الإصبع، والمحتوى يتحرك إذا كان الهدف تبويب محتوى
     document.addEventListener('touchmove',e=>{
       if(!gOn||gEdge||!canHomeSwipe()||blockedTarget(e.target))return;
       const t=e.touches[0];const dx=t.clientX-gx,dy=t.clientY-gy;
@@ -3183,33 +3198,57 @@
         if(Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.5)return;
         gHoriz=true;
       }
-      const i=HTABS.indexOf(S.tab);
+      const W=window.innerWidth;
+      const i=curBI();
       const ni=dx>0?i+1:i-1;
-      const hasNeighbor=ni>=0&&ni<HTABS.length;
-      const off=hasNeighbor?dx:dx*0.25; // مقاومة عند الأطراف
+      const hasN=ni>=0&&ni<BAR.length;
       const c=homeC();if(!c)return;
-      c.style.transition='none';
-      c.style.transform=`translate3d(${off}px,0,0)`;
+      // المؤشر يتبع الإصبع بين الخانتين
+      const prog=hasN?Math.min(1,Math.abs(dx)/(W*0.35)):0;
+      _homePill(i+(dx>0?1:-1)*prog,false);
+      if(hasN&&CONTENT.includes(BAR[ni])){
+        c.style.transition='none';
+        c.style.transform=`translate3d(${dx}px,0,0)`;
+      }else{
+        c.style.transition='none';
+        c.style.transform=`translate3d(${hasN?0:dx*0.25}px,0,0)`;
+      }
     },{passive:true});
 
     document.addEventListener('touchend',e=>{
       const wasOn=gOn;gOn=false;
       const t=e.changedTouches[0];const dx=t.clientX-gx,dy=t.clientY-gy;
 
-      // سحب أفقي على الرئيسية: تبديل التبويب أو الرجوع للمكان
       if(gHoriz&&canHomeSwipe()){
         gHoriz=false;
         const c=homeC();
         const W=window.innerWidth;
-        const i=HTABS.indexOf(S.tab);
+        const i=curBI();
         const ni=dx>0?i+1:i-1;
-        const commit=ni>=0&&ni<HTABS.length&&Math.abs(dx)>Math.min(90,W*0.22)&&Date.now()-gT<900;
-        if(!commit){settleHome(c,dx);return;}
+        const hasN=ni>=0&&ni<BAR.length;
+        const commit=hasN&&Math.abs(dx)>Math.min(90,W*0.22)&&Date.now()-gT<900;
+        if(!commit){settleHome(c);_homePill(i,true);return;}
+        const target=BAR[ni];
+
+        // الإعدادات: تُفتح النافذة (المؤشر يرجع للمكان الحالي تحت النافذة)
+        if(target==='settings'){
+          settleHome(c);_homePill(ni,true);
+          setTimeout(()=>{_openSettingsSheet();_homePill(curBI(),false);},220);
+          return;
+        }
+        // الملف الشخصي: صفحة مستقلة
+        if(target==='user'){
+          settleHome(c);_homePill(ni,true);
+          setTimeout(()=>go('profile'),220);
+          return;
+        }
+        // المجموعات والخاصة: تبديل المحتوى مع حركة الإصبع
         const dir=dx>0?1:-1;
+        _homePill(ni,true);
         c.style.transition='transform .2s ease-in';
         c.style.transform=`translate3d(${dir*W}px,0,0)`;
         setTimeout(()=>{
-          S.tab=HTABS[ni];barSync();
+          S.tab=target;
           renderTabContent(c);
           c.style.transition='none';
           c.style.transform=`translate3d(${-dir*W*0.3}px,0,0)`;
@@ -3224,7 +3263,6 @@
       if(Math.abs(dy)>70||Math.abs(dx)<70||Date.now()-gT>700)return;
       if(blockedTarget(e.target))return;
       if(S.screen&&S.screen!=='home'&&S.screen!=='auth'){
-        // من الحافة اليسرى لليمين، أو من الحافة اليمنى لليسار (للداخل)
         if((gEdge==='left'&&dx>0)||(gEdge==='right'&&dx<0)){
           if(Date.now()-_lastBackAt<700)return;
           const fo=document.getElementById('fwd-ov');if(fo){fo.remove();return;}
@@ -3235,7 +3273,7 @@
 
     document.addEventListener('touchcancel',()=>{
       gOn=false;
-      if(gHoriz){gHoriz=false;const c=homeC();if(c)settleHome(c,0);}
+      if(gHoriz){gHoriz=false;const c=homeC();if(c)settleHome(c);_homePill(curBI(),true);}
     },{passive:true});
   })();
 
