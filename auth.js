@@ -130,7 +130,8 @@ window.Auth = (function () {
         emoji:     '',
         bio:       '',
         photo:     null,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        usernameChangedAt: Date.now()
       });
 
       saveSession(username);
@@ -254,6 +255,37 @@ window.Auth = (function () {
   }
 
   /* ── Change password ─────────────────────────────────────────── */
+  // تغيير اليوزر نيم: فريد (تطابق تام) + مرة كل 30 يوم
+  const USERNAME_LOCK_MS = 30 * 24 * 60 * 60 * 1000;
+  async function changeUsername(uid, oldName, newName) {
+    if (!uid) return { error: 'سجّل دخولك أولاً' };
+    newName = (newName || '').trim();
+    if (!newName) return { error: 'أدخل اليوزر نيم الجديد' };
+    if (newName === oldName) return { error: 'هذا هو اسمك الحالي' };
+    if (newName.length < 2)  return { error: 'الاسم قصير جداً (حرفان على الأقل)' };
+    if (newName.length > 20) return { error: 'الاسم طويل جداً (20 حرفاً كحد أقصى)' };
+    if (!/^[a-zA-Z0-9_\u0600-\u06FF]+$/.test(newName)) return { error: 'الاسم يحتوي على رموز غير مسموحة' };
+    const _banned = ['admin','administrator','support','system','nabda','root','moderator','mod','owner','staff','official'];
+    if (_banned.includes(newName.toLowerCase())) return { error: 'هذا الاسم محجوز، اختر اسماً آخر' };
+
+    const me = await FB.get(`users/${uid}`) || {};
+    const lockUntil = (me.usernameChangedAt || 0) + USERNAME_LOCK_MS;
+    if (Date.now() < lockUntil) {
+      return { error: 'يمكن تغيير اليوزر نيم بعد ' + new Date(lockUntil).toLocaleDateString('ar') };
+    }
+    // احجز الاسم الجديد بشكل ذري: إذا موجود (لأي مستخدم) يُرفض
+    if (!(await _claimUsername(newName, uid))) return { error: 'اليوزر نيم مستخدم، اختر اسماً آخر' };
+    try {
+      await FB.upd(`users/${uid}`, { username: newName, usernameChangedAt: Date.now() });
+      if (oldName) { try { await FB.del(`usernames/${oldName}`); } catch {} }
+      saveSession(newName);
+      return { ok: true, username: newName };
+    } catch (e) {
+      try { await FB.del(`usernames/${newName}`); } catch {}
+      return { error: 'تعذّر تغيير اليوزر نيم، حاول مرة ثانية' };
+    }
+  }
+
   async function changePassword(currentPassword, newPassword, confirmPassword) {
     // حسابات Google ما عندها كلمة مرور أصلاً
     if (!FB.authHasPassword())
@@ -566,6 +598,7 @@ window.Auth = (function () {
     loginWithGoogle,    // v2
     logout,
     changePassword,
+    changeUsername,
     updateEmail,        // v2
     resetPassword,
     deleteAccount,
