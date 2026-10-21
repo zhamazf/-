@@ -19,7 +19,7 @@
   - style-src 'unsafe-inline'    → مطلوب للـ inline styles (شاشة التحميل)
   - img-src / media-src          → data: blob: + Firebase Storage + صور حسابات Google فقط
                                    (أي رابط خارجي آخر محجوب: يمنع تتبّع IP المستخدم عبر رسائل فيها روابط)
-  ⚠️ إذا أضفت دومينات خارجية لاحقاً (fonts, cdn...) أضفها هنا
+   إذا أضفت دومينات خارجية لاحقاً (fonts, cdn...) أضفها هنا
   ═══════════════════════════════════════════════════════════════
 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
@@ -115,12 +115,12 @@
 
 <!-- شاشة التحميل — تختفي فقط بعد FB.init() + تحميل البيانات الأساسية -->
 <div id="loading-screen">
-  <div style="width:64px;height:64px;background:linear-gradient(135deg,#3b9ef0,#2b7fd4);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 8px 24px rgba(99,102,241,.35)">💬</div>
+  <div style="width:64px;height:64px;background:linear-gradient(135deg,#3b9ef0,#2b7fd4);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 8px 24px rgba(99,102,241,.35)"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
   <div id="ls-title" style="font-size:22px;font-weight:800;letter-spacing:-0.5px">نبضة</div>
   <div id="ls-spinner" style="width:36px;height:36px;border:3px solid #3b9ef0;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>
   <!-- رسالة الخطأ — تظهر فقط عند فشل التحميل -->
   <div id="loading-error">
-    <div style="font-size:24px;margin-bottom:8px">⚠️</div>
+    <div style="font-size:24px;margin-bottom:8px"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
     <span id="loading-error-msg">تعذر تحميل التطبيق</span>
     <br/>
     <button
@@ -205,35 +205,7 @@
   navigator.serviceWorker.addEventListener('message', function(e) {
     if (!e.data) return;
 
-    // تحديث جديد متاح
-    if (e.data.type === 'SW_UPDATED') {
-      var banner = document.createElement('div');
-      banner.style.cssText =
-        'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);' +
-        'z-index:99999;background:#3b9ef0;color:#fff;padding:12px 20px;' +
-        'border-radius:14px;font-size:13px;font-weight:700;direction:rtl;' +
-        'display:flex;align-items:center;gap:12px;' +
-        'box-shadow:0 4px 20px rgba(99,102,241,.5)';
-      var txt = document.createElement('span');
-      txt.textContent = '✨ يوجد تحديث جديد';
-      var btn = document.createElement('button');
-      btn.textContent = 'تحديث';
-      btn.style.cssText =
-        'border:none;background:#fff;color:#3b9ef0;padding:6px 14px;' +
-        'border-radius:8px;font-weight:700;cursor:pointer;font-size:12px';
-      btn.onclick = function() { location.reload(); };
-      var closeBtn = document.createElement('button');
-      closeBtn.textContent = '✕';
-      closeBtn.style.cssText =
-        'border:none;background:transparent;color:#fff;cursor:pointer;font-size:16px;padding:0 4px';
-      closeBtn.onclick = function() { banner.remove(); };
-      banner.appendChild(txt);
-      banner.appendChild(btn);
-      banner.appendChild(closeBtn);
-      document.body.appendChild(banner);
-      // يختفي تلقائياً بعد 10 ثوان
-      setTimeout(function() { if(banner.parentNode) banner.remove(); }, 10000);
-    }
+    // (تم إلغاء إشعار "يوجد تحديث": التحديث يظهر تلقائياً عند فتح التطبيق)
 
     // تم مسح الـ cache
     if (e.data.type === 'CACHE_CLEARED') {

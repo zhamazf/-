@@ -269,7 +269,7 @@ window.Chat = (function () {
         msgId:    msg.id,
         sender:   msg.sender,
         type:     msg.type || 'text',
-        text:     msg._enc ? '🔒 رسالة مشفّرة' : (msg.type === 'text' ? (msg.text || '').slice(0, 120) : `[${msg.type}]`),
+        text:     msg._enc ? 'رسالة مشفّرة': (msg.type === 'text'? (msg.text || '').slice(0, 120) : `[${msg.type}]`),
         ts:       msg.ts,
         pinnedAt: Date.now(),
         pinnedBy: pinnedByUid,
@@ -384,7 +384,7 @@ window.Chat = (function () {
     const k = _dmKeyOfPath(path), E = _E2E();
     if (!k || !E || !msgs || !msgs.some(m => m && m.e2e)) return msgs;
     try { return await E.decryptList(k, msgs); }
-    catch (e) { return msgs.map(m => (m && m.e2e) ? Object.assign({}, m, { e2e: undefined, type: 'text', text: '🔒 رسالة مشفّرة', _undecryptable: true, _enc: true }) : m); }
+    catch (e) { return msgs.map(m => (m && m.e2e) ? Object.assign({}, m, { e2e: undefined, type: 'text', text: 'رسالة مشفّرة', _undecryptable: true, _enc: true }) : m); }
   }
 
   function _listen(path, cb) {
@@ -526,7 +526,7 @@ window.Chat = (function () {
   function statusText(msg) {
     if (!msg) return '';
     switch (msg.status) {
-      case 'read':      return '✓✓🔵';
+      case 'read':      return '✓✓';
       case 'delivered': return '✓✓';
       default:          return '✓';
     }

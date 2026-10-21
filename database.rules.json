@@ -48,6 +48,12 @@
           "typing": {
             ".validate": "newData.isBoolean()"
           },
+          "hideEmail": {
+            ".validate": "newData.isBoolean()"
+          },
+          "hidePhone": {
+            ".validate": "newData.isBoolean()"
+          },
           "$other": {
             ".validate": false
           }

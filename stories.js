@@ -282,7 +282,7 @@ window.Stories = (function () {
           type:     storyData?.type || 'image',
           preview:  storyData?.type === 'text'
             ? (storyData.text || '').slice(0, 60)
-            : '📸 قصة',
+            : 'قصة',
         },
       };
       // عبر Chat.sendDM لتُشفَّر الرسالة تلقائياً إن كانت المحادثة مشفّرة
