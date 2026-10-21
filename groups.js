@@ -71,6 +71,19 @@ window.Groups = (function () {
     return g || null;
   }
 
+  /* ── دليل المجموعات (للاستكشاف): بيانات عامة فقط بدون رمز الدعوة أو الأعضاء ── */
+  async function syncDirectory(gid, g) {
+    try {
+      if (!g) g = await _getGroup(gid);
+      if (!g) return;
+      await FB.set(`groupDirectory/${gid}`, {
+        name: String(g.name || '').slice(0, 60),
+        description: String(g.description || '').slice(0, 300),
+        privacy: g.privacy === 'public' ? 'public' : 'private',
+      });
+    } catch (e) { /* غير حرج */ }
+  }
+
   /* ── Helper: التحقق من هوية المستخدم الحالي ─────────────────── */
   function _myUid() {
     return FB.authCurrentUser()?.uid || null;
@@ -120,6 +133,7 @@ window.Groups = (function () {
       return { error: 'تعذّر إنشاء المجموعة، حاول مجدداً' };
     }
 
+    await syncDirectory(gid, { name: name.trim(), description: opts.description || '', privacy: opts.privacy === 'public' ? 'public' : 'private' });
     return { ok: true, gid };
   }
 
@@ -184,7 +198,8 @@ window.Groups = (function () {
     if (!uid) return { error: 'يجب تسجيل الدخول أولاً' };
 
     // غير الأعضاء لا يقرؤون المجموعة (قواعد Firebase) → القراءة تنجح للأعضاء فقط
-    const g = await _getGroup(gid);
+    // غير الأعضاء قد لا يقدرون يقرؤون المجموعة → أي خطأ قراءة نتجاهله ونكمل
+    let g = null; try { g = await _getGroup(gid); } catch (e) {}
     if (g?.members?.[uid]) return { error: 'أنت بالفعل عضو في هذه المجموعة' };
     if (g?.pending?.[uid]) return { error: 'طلبك قيد الانتظار' };
 
@@ -315,6 +330,7 @@ window.Groups = (function () {
     if (!g) return { error: 'المجموعة غير موجودة' };
     if (!isAdmin(g, uid)) return { error: 'الأدمن فقط يغيّر نوع المجموعة' };
     try { await FB.set(`groups/${gid}/privacy`, privacy); } catch (e) { return { error: 'تعذّر الحفظ' }; }
+    await syncDirectory(gid, { ...g, privacy });
     return { ok: true };
   }
 
@@ -334,6 +350,7 @@ window.Groups = (function () {
     if (!Object.keys(upd).length)  return { error: 'لا يوجد تغيير' };
 
     await FB.upd(`groups/${gid}`, upd);
+    if (upd.name) await syncDirectory(gid, { ...g, name: upd.name });
     return { ok: true };
   }
 
@@ -347,6 +364,7 @@ window.Groups = (function () {
 
     // ✅ الأدمن فقط يحذف المجموعة
     if (!isAdmin(g, uid)) return { error: 'الأدمن فقط يمكنه حذف المجموعة' };
+    try { await FB.del(`groupDirectory/${gid}`); } catch (e) {}
 
     // احذف group index من جميع الأعضاء أولاً: قاعدة الكتابة على users/{uid}/groups/{gid}
     // تتحقق من أن الكاتب أدمن المجموعة، وهذا يفشل بعد حذف المجموعة نفسها.
@@ -644,7 +662,8 @@ window.Groups = (function () {
 
   return {
     // Core
-    create, joinByInvite, requestJoin,
+    create, joinByInvite, requestJoin, syncDirectory,
+    listDirectory: () => FB.get('groupDirectory').then(v => v || {}).catch(() => ({})),
     approve, reject, kick, toggleInvite,
     addMember, saveEdit, deleteGroup, toggleMod,
     joinPublic, setPrivacy,

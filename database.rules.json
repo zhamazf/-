@@ -13,6 +13,10 @@
       }
     },
     "users": {
+      ".indexOn": [
+        "displayName"
+      ],
+      ".read": "auth !== null && query.orderByChild === 'displayName' && query.limitToFirst <= 10 && query.startAt.length >= 1",
       "$uid": {
         ".read": "auth !== null",
         ".write": "$uid === auth.uid",
@@ -358,6 +362,25 @@
           }
         },
         ".write": "auth !== null && $uid === auth.uid && !newData.exists()"
+      }
+    },
+    "groupDirectory": {
+      ".read": "auth !== null",
+      "$gid": {
+        ".write": "auth !== null && (root.child('groups').child($gid).child('admin').val() === auth.uid || root.child('groups').child($gid).child('mods').child(auth.uid).exists())",
+        ".validate": "newData.hasChildren(['name','privacy'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 300"
+        },
+        "privacy": {
+          ".validate": "newData.val() === 'public' || newData.val() === 'private'"
+        },
+        "$other": {
+          ".validate": false
+        }
       }
     }
   }

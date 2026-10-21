@@ -436,6 +436,55 @@
     if (_notifPanel) { _notifPanel.remove(); _notifPanel = null; }
     if (_notifDocHandler) { document.removeEventListener('click', _notifDocHandler); _notifDocHandler = null; }
   }
+  /* ── طلبات الصداقة: قبول/رفض/إلغاء من أي مكان (الإشعارات، الملف الشخصي) ── */
+  const _incomingReq = uid => !!(uid && S.friendReqs && S.friendReqs[S.meUid] && S.friendReqs[S.meUid][uid]);
+  async function _acceptFriend(fromUid, name){
+    const res = await Friends.acceptRequest(S.meUid, fromUid);
+    if (res && res.error) { UI.toast(res.error, 'error'); return false; }
+    S.users[S.meUid] = { ...(S.users[S.meUid] || {}), friends: { ...((S.users[S.meUid] || {}).friends || {}), [fromUid]: true } };
+    rebuildUserMaps();
+    UI.toast(`أصبحت وصديق ${name || ''} ✓`, 'success');
+    try { UI.playSound('notif'); } catch {}
+    _refreshAfterFriendChange();
+    return true;
+  }
+  async function _rejectFriend(fromUid){
+    const res = await Friends.rejectRequest(S.meUid, fromUid);
+    if (res && res.error) { UI.toast(res.error, 'error'); return false; }
+    UI.toast('تم رفض الطلب', 'info');
+    _refreshAfterFriendChange();
+    return true;
+  }
+  function _refreshAfterFriendChange(){
+    try { if (_notifPanel) _fillNotifPanel(); } catch {}
+    try { refreshDyn(); } catch {}
+    if (S.screen === 'userProfile' || S.screen === 'friends') renderScreen();
+  }
+  function _friendReqBtns(fromUid, name){
+    const wrap = UI.el('div', 'display:flex;gap:6px;flex-shrink:0');
+    const rB = UI.el('button', `padding:6px 10px;border:1px solid ${th().border};border-radius:10px;background:${th().card2};color:${th().text2};font-family:inherit;font-size:12px;font-weight:700;cursor:pointer`);
+    rB.textContent = 'رفض';
+    const aB = UI.el('button', 'padding:6px 12px;border:none;border-radius:10px;background:#22c55e;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer');
+    aB.textContent = 'قبول';
+    rB.addEventListener('click', e => { e.stopPropagation(); _rejectFriend(fromUid); });
+    aB.addEventListener('click', e => { e.stopPropagation(); _acceptFriend(fromUid, name); });
+    wrap.appendChild(rB); wrap.appendChild(aB);
+    return wrap;
+  }
+
+  /* الضغط على نص الإشعار: يفتح الشيء المرتبط به */
+  function _openNotifTarget(n){
+    const name = S.users[n.fromUid]?.username || '';
+    if (n.type === 'friend_request' || n.type === 'friend_accept') {
+      _closeNotifPanel();
+      if (name) go('userProfile', name); else go('friends');
+      return;
+    }
+    if (n.type === 'group_add' && n.gid) {
+      _closeNotifPanel();
+      go('group', n.gid);
+    }
+  }
   function _fillNotifPanel() {
     if (!_notifPanel) return;
     const t = th(); _notifPanel.textContent = '';
@@ -454,11 +503,16 @@
       const tx = UI.el('div', `font-size:13px;color:${t.text};line-height:1.5`); tx.textContent = _notifText(n);
       const tm = UI.el('div', `font-size:11px;color:${t.text3};margin-top:2px`); tm.textContent = _notifAgo(n.ts);
       body.appendChild(tx); body.appendChild(tm);
-      body.addEventListener('click', () => { if (!n.read) _markNotifsRead([nid]); });
+      body.addEventListener('click', () => { if (!n.read) _markNotifsRead([nid]); _openNotifTarget(n); });
+      if (n.type === 'friend_request') {
+        if (_incomingReq(n.fromUid)) row.appendChild(_friendReqBtns(n.fromUid, S.users[n.fromUid]?.username));
+        else { const done = UI.el('div', `font-size:11px;color:${t.text3};flex-shrink:0`); done.textContent = 'تم الرد'; row.appendChild(done); }
+      }
       const del = UI.el('button', `border:none;background:transparent;color:${t.text3};font-size:15px;cursor:pointer;padding:2px 6px;flex-shrink:0;font-family:inherit`);
       del.textContent = '✕'; del.setAttribute('aria-label', 'حذف');
       del.addEventListener('click', () => { FB.del(`notifications/${S.meUid}/${nid}`).catch(() => {}); });
-      row.appendChild(body); row.appendChild(del); list.appendChild(row);
+      row.appendChild(body);
+      row.appendChild(del); list.appendChild(row);
     });
     _notifPanel.appendChild(list);
   }
@@ -1078,6 +1132,65 @@
     return row;
   }
 
+  /* ── استكشاف المجموعات: العامة والخاصة تظهر للجميع (الخاصة بطلب انضمام) ── */
+  const _dirSynced = new Set();
+  function _buildDiscovery(){
+    const sec = UI.el('div','margin-bottom:16px');
+    const hdr = UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:8px`);
+    hdr.textContent = 'استكشاف المجموعات';
+    const list = UI.el('div','');
+    sec.appendChild(hdr); sec.appendChild(list);
+    const mine = new Set(myGroups().map(g => g.id));
+    // مزامنة دليل مجموعاتي التي أدمنها (للمجموعات القديمة قبل ظهور الدليل)
+    myGroups().forEach(g => { if (g.admin === S.meUid && !_dirSynced.has(g.id)) { _dirSynced.add(g.id); Groups.syncDirectory(g.id, g); } });
+    Groups.listDirectory().then(dir => {
+      if (!list.isConnected) return;
+      const rows = Object.entries(dir || {})
+        .filter(([gid, d]) => d && !mine.has(gid))
+        .sort((a, b) => String(a[1].name || '').localeCompare(String(b[1].name || '')));
+      if (!rows.length) {
+        const e = UI.el('div',`color:${th().text3};font-size:13px;padding:8px 0`);
+        e.textContent = 'لا توجد مجموعات أخرى حالياً';
+        list.appendChild(e); return;
+      }
+      rows.forEach(([gid, d]) => list.appendChild(_discoveryRow(gid, d)));
+    });
+    return sec;
+  }
+  function _discoveryRow(gid, d){
+    const isPub = d.privacy === 'public';
+    const row = UI.el('div',`display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:${th().card};border:1px solid ${th().border};margin-bottom:6px`);
+    const av = UI.el('div','width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0');
+    av.textContent = (d.name || '?').charAt(0);
+    const info = UI.el('div','flex:1;min-width:0');
+    const nm = UI.el('div',`font-weight:700;font-size:14px;color:${th().text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);
+    nm.textContent = d.name || '';
+    const sub = UI.el('div',`font-size:11px;color:${th().text3};margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);
+    sub.textContent = (isPub ? 'عامة' : 'خاصة') + (d.description ? ' · ' + d.description : '');
+    info.appendChild(nm); info.appendChild(sub);
+    const btn = UI.el('button','padding:7px 12px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0');
+    btn.textContent = isPub ? 'انضمام' : 'طلب انضمام';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      if (isPub) {
+        const r = await Groups.joinPublic(S.me, gid);
+        if (r && r.ok) {
+          UI.toast(`انضممت إلى ${d.name || 'المجموعة'} ✓`, 'success');
+          row.remove();
+          setTimeout(refreshChatList, 800);
+          return;
+        }
+        if (!(r && r.needsRequest)) { UI.toast((r && r.error) || 'تعذّر الانضمام', 'error'); btn.disabled = false; return; }
+      }
+      const r = await Groups.requestJoin(S.me, gid);
+      if (r && r.error) { UI.toast(r.error, 'info'); btn.disabled = false; return; }
+      UI.toast('تم إرسال طلب الانضمام ✓', 'success');
+      btn.textContent = 'تم إرسال الطلب';
+    });
+    row.appendChild(av); row.appendChild(info); row.appendChild(btn);
+    return row;
+  }
+
   function renderTabContent(container){
     container.innerHTML='';
     if(container.id==='home-content'){ container.appendChild(buildListHead()); if(_storyWrap) container.appendChild(_storyWrap); }
@@ -1111,7 +1224,7 @@
     } else if(S.tab==='groups'){
       const btnRow=UI.el('div','display:flex;gap:8px;margin-bottom:14px');
       const ngBtn=UI.el('button','flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:13px;font-family:inherit;cursor:pointer'); ngBtn.textContent='+ مجموعة جديدة'; ngBtn.addEventListener('click',()=>go('newGroup')); btnRow.appendChild(ngBtn);
-      const jnBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'var(--accent)':'var(--accent)'};font-weight:700;font-size:13px;font-family:inherit;cursor:pointer`); jnBtn.innerHTML=UI.label('link','انضمام'); jnBtn.addEventListener('click',()=>go('join')); btnRow.appendChild(jnBtn); container.appendChild(btnRow);
+      const jnBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'var(--accent)':'var(--accent)'};font-weight:700;font-size:13px;font-family:inherit;cursor:pointer`); jnBtn.innerHTML=UI.label('link','انضمام'); jnBtn.addEventListener('click',()=>go('join')); btnRow.appendChild(jnBtn); container.appendChild(btnRow); container.appendChild(_buildDiscovery());
       const allG=myGroups().map(g=>{const ts=_groupLastTs(g);return {g,ts,pin:_pref('group',g.id).pinned||0,bucket:_chatBucket('group',g.id,ts)};});
       const grps=allG.filter(x=>x.bucket==='main').sort(_sortChats).map(x=>x.g);
       const archG=allG.filter(x=>x.bucket==='archived').sort(_sortChats).map(x=>x.g);
@@ -2722,7 +2835,37 @@
     if(S.stories[_uUid]&&Object.keys(S.stories[_uUid]).length>0){const stSec=UI.el('div',`margin-bottom:16px;padding:12px;background:${th().card};border-radius:14px;border:1px solid ${th().border}`);const stHdr=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:10px`);stHdr.textContent='القصص';stSec.appendChild(stHdr);const stRow=UI.el('div','display:flex;gap:8px;overflow-x:auto;justify-content:center;scrollbar-width:none');Stories.getUserStories(_uUid,S.stories).forEach(s=>{const img=document.createElement('img');img.src=s.url||s.data;img.alt='قصة';img.loading='lazy';img.style.cssText='width:60px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid var(--accent);flex-shrink:0';img.addEventListener('click',()=>{Stories.markSeen(_uUid);openStoryViewer(_uUid);});stRow.appendChild(img);});stSec.appendChild(stRow);inner.appendChild(stSec);}
     else if(!mf.includes(u)&&u!==S.me&&S.stories[u]&&Object.keys(S.stories[u]).length>0){const locked=UI.el('div',`padding:8px 14px;background:${th().card2};border-radius:10px;color:${th().text3};font-size:12px;border:1px solid ${th().border};margin-bottom:12px`);locked.textContent='القصص متاحة للأصدقاء فقط';inner.appendChild(locked);}
     const btnRow=UI.el('div','display:flex;gap:8px;margin-top:16px');const msgBtn=UI.el('button','flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer');msgBtn.innerHTML=UI.label('chat','رسالة');msgBtn.addEventListener('click',()=>go('dm',u));btnRow.appendChild(msgBtn);
-    if(!mf.includes(u)&&u!==S.me){const addBtn=UI.el('button',`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:${UI.isDark()?'var(--accent)':'var(--accent)'};font-weight:700;font-size:14px;font-family:inherit;cursor:pointer`);addBtn.textContent='+ صديق';addBtn.addEventListener('click',async()=>{const targetUid2=_uidByName(u);if(!targetUid2)return UI.toast('المستخدم غير موجود','error');const myFriendUids=Object.keys(S.users[S.meUid]?.friends||{});const res=await Friends.sendRequest(S.meUid,targetUid2,S.users,myFriendUids);if(res.error)UI.toast(res.error,'error');else{UI.toast(`تم إرسال طلب صداقة إلى ${u} ✓`,'success');UI.playSound('notif');}});btnRow.appendChild(addBtn);}
+    if(!mf.includes(u)&&u!==S.me){
+      const slot=UI.el('div','flex:1;display:flex;gap:8px;min-width:0');
+      btnRow.appendChild(slot);
+      const tUid=_uidByName(u);
+      const pillBtn=(label,fn,primary)=>{const b=UI.el('button',primary?'flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer':`flex:1;padding:10px 16px;border:1px solid ${th().border};border-radius:12px;background:${th().card2};color:var(--accent);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer`);b.textContent=label;b.addEventListener('click',fn);return b;};
+      const paint=(state)=>{
+        slot.innerHTML='';
+        if(state==='incoming'){
+          slot.appendChild(pillBtn('قبول',async()=>{if(await _acceptFriend(tUid,u))renderScreen();},true));
+          slot.appendChild(pillBtn('رفض',async()=>{if(await _rejectFriend(tUid))renderScreen();},false));
+        }else if(state==='outgoing'){
+          const sent=UI.el('div',`flex:1;text-align:center;padding:10px;border-radius:12px;background:${th().card2};border:1px solid ${th().border};color:${th().text2};font-size:13px;font-weight:700`);sent.textContent='تم إرسال الطلب';
+          slot.appendChild(sent);
+          slot.appendChild(pillBtn('إلغاء',async()=>{try{await FB.del(`friendRequests/${tUid}/${S.meUid}`);UI.toast('تم إلغاء الطلب','info');paint('none');}catch(e){UI.toast('تعذّر إلغاء الطلب','error');}},false));
+        }else{
+          slot.appendChild(pillBtn('+ صديق',async()=>{
+            if(!tUid)return UI.toast('المستخدم غير موجود','error');
+            const myFriendUids=Object.keys(S.users[S.meUid]?.friends||{});
+            const res=await Friends.sendRequest(S.meUid,tUid,S.users,myFriendUids);
+            if(res.error)return UI.toast(res.error,'error');
+            UI.toast(`تم إرسال طلب صداقة إلى ${u} ✓`,'success');
+            paint('outgoing');
+          },false));
+        }
+      };
+      if(_incomingReq(tUid)) paint('incoming');
+      else{
+        paint('none');
+        if(tUid) FB.get(`friendRequests/${tUid}/${S.meUid}`).then(v=>{ if(v && slot.isConnected) paint('outgoing'); }).catch(()=>{});
+      }
+    }
     else if(mf.includes(u)){const fr=UI.el('div','flex:1;text-align:center;padding:10px;color:#22c55e;font-size:13px;font-weight:700');fr.textContent='✓ صديق';btnRow.appendChild(fr);}
     inner.appendChild(btnRow);
     // منشورات المستخدم — الحساب الخاص يظهر للأصدقاء فقط
@@ -2802,7 +2945,7 @@
         const row=UI.el('div',`display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid ${th().border};cursor:pointer`);
         const known=S.users[it.uid]||{username:it.username};
         row.appendChild(UI.makeAvatar({...known,username:it.username},36));
-        const nn=UI.el('div',`flex:1;font-weight:600;font-size:14px;color:${th().text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);nn.textContent=it.username;row.appendChild(nn);
+        const nn=UI.el('div',`flex:1;font-weight:600;font-size:14px;color:${th().text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);nn.textContent=it.display?`${it.display} (@${it.username})`:it.username;row.appendChild(nn);
         if(_friendSet.has(it.uid)){const f=UI.el('span','font-size:12px;color:#22c55e;font-weight:700');f.textContent='✓ صديق';row.appendChild(f);}
         else{const b=UI.el('button','padding:6px 12px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer');b.textContent='+ إضافة';
           b.addEventListener('click',e=>{e.stopPropagation();sInp.value=it.username;doSearch();});row.appendChild(b);}
