@@ -2585,10 +2585,10 @@
     const mkLbl=t=>{const l=UI.el('label',`font-size:12px;color:${th().text2};font-weight:700;display:block;margin:10px 0 6px`);l.textContent=t;return l;};
     const mkIn=(ph,val,tp)=>{const i=UI.el('input',`width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;direction:rtl;box-sizing:border-box;font-family:inherit`);i.placeholder=ph;i.value=val;i.type=tp||'text';return i;};
     const iName=mkIn('الاسم الذي يظهر للآخرين',fv.displayName); iName.maxLength=40;
-    const iTitle=mkIn('مثل: طالب، مختبري، مهتم بالذكاء الاصطناعي',fv.title); iTitle.maxLength=60;
-    const iStudy=mkIn('مثل: بكالوريوس تقنيات المختبرات',fv.study); iStudy.maxLength=60;
+    const iTitle=mkIn('اكتب مسماك أو اهتمامك الرئيسي',fv.title); iTitle.maxLength=60;
+    const iStudy=mkIn('اكتب تخصصك أو مكان دراستك',fv.study); iStudy.maxLength=60;
     const iCity=mkIn('المدينة',fv.city); iCity.maxLength=40;
-    const iPhone=mkIn('مثل: 07xxxxxxxxx','','tel'); iPhone.maxLength=20;
+    const iPhone=mkIn('رقم الهاتف','','tel'); iPhone.maxLength=20;
     const gSel=document.createElement('select');
     gSel.style.cssText=`width:100%;padding:11px 14px;border-radius:12px;border:1.5px solid ${th().inpBorder};background:${th().inp};color:${th().text};font-size:14px;direction:rtl;box-sizing:border-box;font-family:inherit`;
     [['','غير محدد'],['male','ذكر'],['female','أنثى']].forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;if((meData.gender||'')===v)o.selected=true;gSel.appendChild(o);});
