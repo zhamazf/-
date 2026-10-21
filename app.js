@@ -2802,7 +2802,7 @@
         const row=UI.el('div',`display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid ${th().border};cursor:pointer`);
         const known=S.users[it.uid]||{username:it.username};
         row.appendChild(UI.makeAvatar({...known,username:it.username},36));
-        const nn=UI.el('div',`flex:1;font-weight:600;font-size:14px;color:${th().text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);nn.textContent=it.username;row.appendChild(nn);
+        const nn=UI.el('div',`flex:1;font-weight:600;font-size:14px;color:${th().text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);nn.textContent=it.display?`${it.display} (@${it.username})`:it.username;row.appendChild(nn);
         if(_friendSet.has(it.uid)){const f=UI.el('span','font-size:12px;color:#22c55e;font-weight:700');f.textContent='✓ صديق';row.appendChild(f);}
         else{const b=UI.el('button','padding:6px 12px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer');b.textContent='+ إضافة';
           b.addEventListener('click',e=>{e.stopPropagation();sInp.value=it.username;doSearch();});row.appendChild(b);}

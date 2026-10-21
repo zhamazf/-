@@ -276,14 +276,23 @@ window.Friends = (function () {
       prefix.toUpperCase(),
     ])];
     const found = new Map();
-    const results = await Promise.all(variants.map(v =>
-      FB.queryKeyPrefix('usernames', v, limit).catch(() => ({}))));
-    results.forEach(obj => Object.entries(obj || {}).forEach(([name, uid]) => {
+    const [byUser, byName] = await Promise.all([
+      Promise.all(variants.map(v => FB.queryKeyPrefix('usernames', v, limit).catch(() => ({})))),
+      // البحث بالاسم الظاهر (displayName) في ملفات المستخدمين
+      Promise.all(variants.map(v => FB.queryChildPrefix('users', 'displayName', v, limit).catch(() => ({})))),
+    ]);
+    byUser.forEach(obj => Object.entries(obj || {}).forEach(([name, uid]) => {
       if (typeof uid === 'string' && uid !== meUid) found.set(name, uid);
+    }));
+    const names = {};
+    byName.forEach(obj => Object.entries(obj || {}).forEach(([uid, u]) => {
+      if (!u || typeof u.username !== 'string' || uid === meUid) return;
+      if (typeof u.displayName === 'string') names[uid] = u.displayName;
+      if (!found.has(u.username)) found.set(u.username, uid);
     }));
     const q = prefix.toLowerCase();
     return [...found.entries()]
-      .map(([username, uid]) => ({ username, uid }))
+      .map(([username, uid]) => ({ username, uid, display: names[uid] || '' }))
       .sort((a, b) => {
         const ae = a.username.toLowerCase() === q ? 0 : 1, be = b.username.toLowerCase() === q ? 0 : 1;
         return ae - be || a.username.length - b.username.length || a.username.localeCompare(b.username);

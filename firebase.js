@@ -119,6 +119,11 @@ window.FB = (function () {
     return snap.exists() ? snap.val() : {};
   }
 
+  async function queryChildPrefix(path, child, prefix, limit = 8) {
+    const snap = await r(path).orderByChild(child).startAt(prefix).endAt(prefix + '\uf8ff').limitToFirst(limit).once('value');
+    return snap.exists() ? snap.val() : {};
+  }
+
   function on(path, cb, onError) {
     const ref = r(path);
     ref.on('value',
@@ -291,7 +296,7 @@ window.FB = (function () {
     onConnectionChange, isConnected,
 
     // DB
-    set, upd, push, del, get, getStrict, queryKeyPrefix, on, onLimit, onDisconn,
+    set, upd, push, del, get, getStrict, queryKeyPrefix, queryChildPrefix, on, onLimit, onDisconn,
 
     // DB v5
     getPage,
