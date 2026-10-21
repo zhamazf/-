@@ -657,6 +657,7 @@
       case 'home':        return renderHome();
       case 'dm':          return renderDM();
       case 'group':       return renderGroup();
+      case 'groupInfo':   return renderGroupInfo();
       case 'profile':     return renderProfile();
       case 'userProfile': return renderUserProfile();
       case 'friends':     return renderFriends();
@@ -1177,6 +1178,12 @@
     }
     else if(g){titleEl.textContent=g.name;subEl.textContent=`${Groups.getMembers(g).length} عضو`;subEl.style.color=th().text3;}
     info.appendChild(titleEl); info.appendChild(subEl); bar.appendChild(info);
+    if(type==='group'&&g){
+      // الضغط على صورة المجموعة أو اسمها يفتح صفحة المعلومات
+      const gav=bar.children[1];const openInfo=()=>go('groupInfo',S.activeId);
+      if(gav){gav.style.cursor='pointer';gav.addEventListener('click',openInfo);}
+      info.addEventListener('click',openInfo);
+    }
     if(type==='dm'){const lk=UI.el('button','background:none;border:none;cursor:pointer;font-size:16px;padding:4px;display:none');lk.id='e2e-lock';lk.setAttribute('aria-label','التشفير');lk.addEventListener('click',()=>_openSafety(S.activeId));bar.appendChild(lk);setTimeout(_e2eRefreshLock,0);}
     const custBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:18px;padding:4px'); custBtn.textContent='🎨'; custBtn.style.color=th().text2; custBtn.addEventListener('click',showCustomizeSheet); bar.appendChild(custBtn);
     const moreBtn=UI.el('button','background:none;border:none;cursor:pointer;font-size:22px;padding:2px 6px;line-height:1;font-weight:800'); moreBtn.textContent='⋮'; moreBtn.style.color=th().text2; moreBtn.setAttribute('aria-label','خيارات المحادثة'); moreBtn.addEventListener('click',()=>_openChatSheet(type,S.activeId)); bar.appendChild(moreBtn);
@@ -1198,6 +1205,51 @@
      DM / GROUP
   ═══════════════════════════════════════════════════════════ */
   function renderDM(){APP.appendChild(buildChatTopbar('dm'));APP.appendChild(buildMsgsArea());APP.appendChild(_isBlockedName(S.activeId)?buildBlockedBar(S.activeId):buildChatInput('dm'));_dmReady=true;}
+
+  /* صفحة معلومات المجموعة (مثل واتساب) */
+  function renderGroupInfo(){
+    const g=ag()||S.groups[S.activeId];
+    APP.appendChild(buildSimpleTopbar('معلومات المجموعة'));
+    const scroll=UI.el('div','flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:24px 16px 40px');
+    if(!g){const ph=UI.el('div',`text-align:center;color:${th().text3};font-size:14px;padding:40px 0`);ph.textContent='تعذّر تحميل المجموعة';scroll.appendChild(ph);APP.appendChild(scroll);return;}
+    const gid=g.id||S.activeId;
+    const isAdm=Groups.isAdmin(g,S.meUid), canM=Groups.canManage(g,S.meUid);
+    const inner=UI.el('div','max-width:440px;margin:0 auto;text-align:center');
+    // الصورة
+    let av;
+    if(g.photo){av=document.createElement('img');av.src=g.photo;av.alt='';av.style.cssText='width:120px;height:120px;border-radius:50%;object-fit:cover;cursor:pointer;display:block;margin:0 auto';av.addEventListener('click',()=>{S.viewImg=g.photo;showImgViewer();});}
+    else{const c=UI.userColor(g.name||'?');av=UI.el('div',`width:120px;height:120px;border-radius:50%;margin:0 auto;background:linear-gradient(135deg,${c},${UI.userColor((g.name||'?')+'1')});display:flex;align-items:center;justify-content:center;font-weight:800;font-size:44px;color:#fff`);av.textContent=(g.name||'?')[0];}
+    inner.appendChild(av);
+    const nm=UI.el('div',`font-weight:800;font-size:22px;color:${th().text};margin-top:14px`);nm.textContent=g.name||'';inner.appendChild(nm);
+    const uids=Groups.getMembers(g);
+    const sub=UI.el('div',`font-size:13px;color:${th().text3};margin-top:4px`);sub.textContent=`${g.privacy==='private'?'مجموعة خاصة':'مجموعة عامة'} · ${uids.length} عضو`;inner.appendChild(sub);
+    if(g.description){const d=UI.el('div',`font-size:14px;color:${th().text2};line-height:1.7;margin:16px 0 4px;padding:12px 14px;background:${th().card};border:1px solid ${th().border};border-radius:14px;text-align:right;white-space:pre-wrap`);d.textContent=g.description;inner.appendChild(d);}
+    // الإجراءات
+    const acts=UI.el('div','margin-top:18px;text-align:right');
+    const mkB=(label,fn,danger)=>{const b=UI.el('button',`display:block;width:100%;text-align:right;padding:13px 14px;margin-bottom:8px;border:1px solid ${th().border};border-radius:14px;background:${th().card2};color:${danger?'#ef4444':th().text};font-size:14px;font-family:inherit;font-weight:600;cursor:pointer`);b.textContent=label;b.addEventListener('click',fn);return b;};
+    acts.appendChild(mkB('فتح المحادثة',()=>go('group',gid)));
+    if(canM) acts.appendChild(mkB('تعديل المجموعة',()=>{S.panel=true;S.groupEdit=true;go('group',gid);}));
+    if(g.inviteActive&&g.inviteCode) acts.appendChild(mkB('نسخ رابط الدعوة',()=>{const link=Groups.getInviteLink(g);try{navigator.clipboard.writeText(link);}catch{}UI.toast('تم نسخ الرابط ✓','success');}));
+    if(!isAdm) acts.appendChild(mkB('مغادرة المجموعة',async()=>{if(!await UI.confirmDialog('هل تريد مغادرة المجموعة؟',{confirmText:'مغادرة',danger:true}))return;const res=await Groups.leaveGroup(gid);if(res&&res.error)UI.toast(res.error,'error');else go('home');},true));
+    if(isAdm) acts.appendChild(mkB('حذف المجموعة',async()=>{if(!await UI.confirmDialog('هل تريد حذف المجموعة نهائياً؟ لا يمكن التراجع!',{confirmText:'حذف نهائياً',danger:true}))return;const res=await Groups.deleteGroup(gid);if(res&&res.error)UI.toast(res.error,'error');else{UI.toast('تم حذف المجموعة','info');go('home');}},true));
+    inner.appendChild(acts);
+    // الأعضاء
+    const sorted=[...uids].sort((a,b)=>{const r=u=>u===g.admin?0:(g.mods&&g.mods[u])?1:2;return r(a)-r(b);});
+    const mh=UI.el('div',`font-size:12px;font-weight:700;color:${th().text3};text-align:right;margin:20px 4px 8px`);mh.textContent=`الأعضاء (${sorted.length})`;inner.appendChild(mh);
+    sorted.forEach(uid=>{
+      const name=_nameByUid(uid)||uid;
+      const row=UI.el('div',`display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:${th().card};border:1px solid ${th().border};margin-bottom:6px;cursor:pointer;text-align:right`);
+      row.appendChild(UI.makeAvatar({...(S.users[uid]||{}),username:name},40,{online:Chat.isOnline(S.presence,uid)}));
+      const info=UI.el('div','flex:1;min-width:0');
+      const n=UI.el('div',`font-weight:600;font-size:14px;color:${th().text}`);n.textContent=name+(uid===S.meUid?' (أنت)':'');info.appendChild(n);
+      const role=uid===g.admin?'مشرف رئيسي':(g.mods&&g.mods[uid])?'مشرف مساعد':'';
+      if(role){const r=UI.el('div','font-size:11px;color:var(--accent)');r.textContent=role;info.appendChild(r);}
+      row.appendChild(info);
+      row.addEventListener('click',()=>{if(name!==S.me)go('userProfile',name);});
+      inner.appendChild(row);
+    });
+    scroll.appendChild(inner);APP.appendChild(scroll);
+  }
 
   function renderGroup(){
     // تأكد من وجود بيانات المجموعة
