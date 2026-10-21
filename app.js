@@ -1206,6 +1206,7 @@
   ═══════════════════════════════════════════════════════════ */
   function renderDM(){APP.appendChild(buildChatTopbar('dm'));APP.appendChild(buildMsgsArea());APP.appendChild(_isBlockedName(S.activeId)?buildBlockedBar(S.activeId):buildChatInput('dm'));_dmReady=true;}
 
+  let _pendingGroupEdit=false; // يفتح لوحة التعديل بعد الانتقال (go يصفّر الحالة)
   /* صفحة معلومات المجموعة (مثل واتساب) */
   function renderGroupInfo(){
     const g=ag()||S.groups[S.activeId];
@@ -1228,7 +1229,7 @@
     const acts=UI.el('div','margin-top:18px;text-align:right');
     const mkB=(label,fn,danger)=>{const b=UI.el('button',`display:block;width:100%;text-align:right;padding:13px 14px;margin-bottom:8px;border:1px solid ${th().border};border-radius:14px;background:${th().card2};color:${danger?'#ef4444':th().text};font-size:14px;font-family:inherit;font-weight:600;cursor:pointer`);b.textContent=label;b.addEventListener('click',fn);return b;};
     acts.appendChild(mkB('فتح المحادثة',()=>go('group',gid)));
-    if(canM) acts.appendChild(mkB('تعديل المجموعة',()=>{S.panel=true;S.groupEdit=true;go('group',gid);}));
+    if(canM) acts.appendChild(mkB('تعديل المجموعة',()=>{_pendingGroupEdit=true;go('group',gid);}));
     if(g.inviteActive&&g.inviteCode) acts.appendChild(mkB('نسخ رابط الدعوة',()=>{const link=Groups.getInviteLink(g);try{navigator.clipboard.writeText(link);}catch{}UI.toast('تم نسخ الرابط ✓','success');}));
     if(!isAdm) acts.appendChild(mkB('مغادرة المجموعة',async()=>{if(!await UI.confirmDialog('هل تريد مغادرة المجموعة؟',{confirmText:'مغادرة',danger:true}))return;const res=await Groups.leaveGroup(gid);if(res&&res.error)UI.toast(res.error,'error');else go('home');},true));
     if(isAdm) acts.appendChild(mkB('حذف المجموعة',async()=>{if(!await UI.confirmDialog('هل تريد حذف المجموعة نهائياً؟ لا يمكن التراجع!',{confirmText:'حذف نهائياً',danger:true}))return;const res=await Groups.deleteGroup(gid);if(res&&res.error)UI.toast(res.error,'error');else{UI.toast('تم حذف المجموعة','info');go('home');}},true));
@@ -1273,7 +1274,9 @@
       const pn=document.getElementById('group-panel');if(pn)pn.remove();
       const pb=document.getElementById('group-panel-btn');if(pb)pb.style.background=th().card2;
     },true);
-    body.appendChild(main); APP.appendChild(body); if(S.panel)buildGroupPanel(body);
+    body.appendChild(main); APP.appendChild(body);
+    if(_pendingGroupEdit){_pendingGroupEdit=false;S.panel=true;S.groupEdit=true;}
+    if(S.panel)buildGroupPanel(body);
   }
 
   /* ═══════════════════════════════════════════════════════════
