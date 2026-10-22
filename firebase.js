@@ -32,10 +32,12 @@ window.FB = (function () {
   let _onlineCbs = [];
 
   /* ── تحميل script عادي (ليس module) ─────────────────────── */
-  function _loadScript(src) {
+  function _loadScript(src, inOrder = false) {
     return new Promise((resolve, reject) => {
       const s   = document.createElement('script');
       s.src     = src;
+      // inOrder: تُحمَّل بالتوازي لكن تُنفَّذ بترتيب الإدراج (مهم لـ compat SDK)
+      s.async   = !inOrder;
       const to  = setTimeout(() => reject(new Error('Timeout loading: ' + src)), 15000);   // شبكة معلّقة لا تبقي شاشة التحميل للأبد
       s.onload  = () => { clearTimeout(to); resolve(); };
       s.onerror = () => { clearTimeout(to); reject(new Error('Failed to load: ' + src)); };
@@ -46,10 +48,13 @@ window.FB = (function () {
   /* ── Init ────────────────────────────────────────────────── */
   async function init() {
     // تحميل Firebase Compat SDK بالترتيب
-    await _loadScript(`${BASE}/firebase-app-compat.js`);
-    await _loadScript(`${BASE}/firebase-database-compat.js`);
-    await _loadScript(`${BASE}/firebase-auth-compat.js`);
-    await _loadScript(`${BASE}/firebase-storage-compat.js`);
+    // تحميل متوازٍ (بدل واحد تلو الآخر) مع الحفاظ على ترتيب التنفيذ
+    await Promise.all([
+      _loadScript(`${BASE}/firebase-app-compat.js`, true),
+      _loadScript(`${BASE}/firebase-database-compat.js`, true),
+      _loadScript(`${BASE}/firebase-auth-compat.js`, true),
+      _loadScript(`${BASE}/firebase-storage-compat.js`, true),
+    ]);
 
     // تهيئة Firebase
     if (!window.firebase.apps.length) {
