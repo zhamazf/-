@@ -475,7 +475,7 @@ window.UI = (function () {
      AVATAR
   ═══════════════════════════════════════════════ */
   function makeAvatar(user, size = 36, opts = {}) {
-    const { online = false, ring = false, seen = false, onClick = null } = opts;
+    const { online = false, ring = false, seen = false, onClick = null, openProfile = true } = opts;
     const name  = user?.username || '?';
     const color = userColor(name);
 
@@ -512,6 +512,8 @@ window.UI = (function () {
     wrap.style.cssText =
       `position:relative;display:inline-flex;flex-shrink:0;${onClick ? 'cursor:pointer' : ''}`;
     if (onClick) wrap.addEventListener('click', onClick);
+    // الضغط على الصورة يفتح الملف الشخصي (يعالجه app.js عبر data-open-user)
+    if (!onClick && openProfile && user?.username) { wrap.dataset.openUser = user.username; wrap.style.cursor = 'pointer'; }
     wrap.appendChild(content);
 
     if (online) {

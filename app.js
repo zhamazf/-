@@ -891,14 +891,14 @@
     const addL=UI.el('span',`font-size:10px;color:${th().text3}`); addL.textContent='قصتي';
     addW.appendChild(addC); addW.appendChild(addL); addW.appendChild(stIn); addW.addEventListener('click',()=>stIn.click()); container.appendChild(addW);
     const myS=Stories.getUserStories(S.meUid,S.stories);
-    if(myS.length){const w=UI.el('div','display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0');const ring=UI.el('div','padding:2px;border-radius:50%;border:2.5px solid #22c55e;display:inline-flex;cursor:pointer');ring.appendChild(UI.makeAvatar(_userData(S.me),46));ring.addEventListener('click',()=>openStoryViewer(S.meUid));const lbl=UI.el('span','font-size:10px;color:#22c55e');lbl.textContent='قصتي';w.appendChild(ring);w.appendChild(lbl);container.appendChild(w);}
+    if(myS.length){const w=UI.el('div','display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0');const ring=UI.el('div','padding:2px;border-radius:50%;border:2.5px solid #22c55e;display:inline-flex;cursor:pointer');ring.appendChild(UI.makeAvatar(_userData(S.me),46,{openProfile:false}));ring.addEventListener('click',()=>openStoryViewer(S.meUid));const lbl=UI.el('span','font-size:10px;color:#22c55e');lbl.textContent='قصتي';w.appendChild(ring);w.appendChild(lbl);container.appendChild(w);}
     fwsUids().forEach(u=>{
       const uName=_nameByUid(u)||u;
       const seen=Stories.isSeen(u,S.stories);
       const w=UI.el('div','display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0');
       const ring=UI.el('div',`padding:2px;border-radius:50%;border:2.5px solid ${seen?'#aaa':'var(--accent)'};display:inline-flex;cursor:pointer`);
       const uid = _uidByName(u);
-      ring.appendChild(UI.makeAvatar(_userData(u),46,{online:Chat.isOnline(S.presence, uid || u)}));
+      ring.appendChild(UI.makeAvatar(_userData(u),46,{online:Chat.isOnline(S.presence, uid || u),openProfile:false}));
       ring.addEventListener('click',()=>{Stories.markSeen(u);openStoryViewer(u);});
       const lbl=UI.el('span',`font-size:10px;color:${seen?th().text3:'var(--accent)'};max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap`); lbl.textContent=u;
       w.appendChild(ring); w.appendChild(lbl); container.appendChild(w);
@@ -1731,14 +1731,14 @@
     const isM=['image','video','voice'].includes(m.type);
     const row=UI.el('div','display:flex;align-items:flex-end;gap:6px;margin-bottom:3px;padding:0 2px;animation:fadeUp .2s ease');
     row.setAttribute('data-row-id', m.id);
-    row.style.flexDirection=mine?'row-reverse':'row';
+    row.style.flexDirection=mine?'row':'row-reverse';
     if(isOpt) row.setAttribute('data-temp-id', m._tempId || m.id);
 
     if(m.deleted){
       const col2=UI.el('div','max-width:78%');
       const del=UI.el('div',`font-size:12px;color:${th().text3};font-style:italic;padding:7px 12px;border-radius:14px;background:${th().bubble};opacity:.7`);
       del.textContent='تم حذف هذه الرسالة';
-      const metaDel=UI.el('div',`font-size:10px;color:${th().text3};margin-top:2px;text-align:${mine?'left':'right'}`);
+      const metaDel=UI.el('div',`font-size:10px;color:${th().text3};margin-top:2px;text-align:${mine?'right':'left'}`);
       metaDel.textContent=UI.fmt(m.ts);
       col2.appendChild(del); col2.appendChild(metaDel); row.appendChild(col2); return row;
     }
@@ -1778,7 +1778,7 @@
     col.appendChild(bub); col.appendChild(metaRow);
 
     if(m.reactions&&Object.keys(m.reactions).length){
-      const rxBar=UI.el('div',`display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;justify-content:${mine?'flex-end':'flex-start'}`);
+      const rxBar=UI.el('div',`display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;justify-content:${mine?'flex-start':'flex-end'}`);
       Chat.parseReactions(m.reactions,S.meUid).forEach(r=>{
         const rb=UI.el('button',`padding:2px 7px;border-radius:12px;border:1px solid ${r.mine?'var(--accent)':th().border};background:${r.mine?'var(--acc22)':th().card2};font-size:13px;cursor:pointer;display:flex;align-items:center;gap:3px`);
         rb.title=r.uids.map(u=>_nameByUid(u)||u).join('، ');
@@ -2707,7 +2707,7 @@
     const scroll=UI.el('div','flex:1;overflow-y:auto;padding:20px;-webkit-overflow-scrolling:touch;text-align:center');
     const inner=UI.el('div','max-width:400px;margin:0 auto;text-align:center');
     const avW=UI.el('div','margin-bottom:14px;display:inline-block');
-    avW.appendChild(UI.makeAvatar({...meData,username:S.me},100,{online:true}));
+    avW.appendChild(UI.makeAvatar({...meData,username:S.me},100,{online:true,openProfile:false}));
     if(meData.photo){avW.style.cursor='pointer';avW.addEventListener('click',()=>{S.viewImg=meData.photo;showImgViewer();});}
     inner.appendChild(avW);
     const nm=UI.el('div',`font-weight:800;font-size:22px;color:${th().text};margin-bottom:2px`);nm.textContent=meData.displayName||S.me;inner.appendChild(nm);
@@ -2739,7 +2739,7 @@
     const scroll=UI.el('div','flex:1;overflow-y:auto;padding:20px;-webkit-overflow-scrolling:touch'); const inner=UI.el('div','max-width:400px;margin:0 auto');
     let ePhoto=meData.photo||null,eEmoji=meData.emoji||'',eBio=meData.bio||'';
     const avSec=UI.el('div','text-align:center;margin-bottom:24px'); const avWrap=UI.el('div','position:relative;display:inline-block'); const avEl=UI.el('div','');
-    const rebuildAv=()=>{avEl.innerHTML='';avEl.appendChild(UI.makeAvatar({...meData,photo:ePhoto,emoji:''},96,{online:true}));};rebuildAv();
+    const rebuildAv=()=>{avEl.innerHTML='';avEl.appendChild(UI.makeAvatar({...meData,photo:ePhoto,emoji:''},96,{online:true,openProfile:false}));};rebuildAv();
     const phIn=document.createElement('input');phIn.type='file';phIn.accept='image/*';phIn.style.display='none';phIn.addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   try{ePhoto=await UI.fileToBase64(f,3*1024*1024);e.target.value='';rebuildAv();}
@@ -2820,19 +2820,20 @@
     const avWrap=UI.el('div','margin-bottom:14px;display:inline-block;cursor:pointer');
     const uid = _uidByName(u);
     const _uUid = uid || u;
-    avWrap.appendChild(UI.makeAvatar(userData,100,{online:Chat.isOnline(S.presence, uid || u),ring:fwsUids().includes(_uUid),seen:Stories.isSeen(_uUid,S.stories)}));
+    avWrap.appendChild(UI.makeAvatar(userData,100,{online:Chat.isOnline(S.presence, uid || u),ring:fwsUids().includes(_uUid),seen:Stories.isSeen(_uUid,S.stories),openProfile:false}));
     if(userData.photo)avWrap.addEventListener('click',()=>{S.viewImg=userData.photo;showImgViewer();});inner.appendChild(avWrap);
     const nm=UI.el('div',`font-weight:800;font-size:22px;color:${th().text};margin-bottom:2px`);
     nm.textContent=userData.displayName||u;
     inner.appendChild(nm);
     if(userData.displayName){const un=UI.el('div',`font-size:13px;color:${th().text3};margin-bottom:4px;direction:ltr`);un.textContent='@'+u;inner.appendChild(un);}
     const status=UI.el('div','font-size:13px;margin-bottom:8px');status.textContent=Chat.lastSeenText(S.presence, uid || u);status.style.color=Chat.isOnline(S.presence, uid || u)?'#22c55e':th().text3;inner.appendChild(status);
-    if(userData.bio){const bio=UI.el('div',`color:${th().text2};font-size:14px;padding:0 20px;line-height:1.6;margin-bottom:16px`);bio.textContent=userData.bio;inner.appendChild(bio);}
+    const isHidden=(userData.prefs||{}).visibility==='private'&&u!==S.me&&!myFriends().includes(u);
+    if(!isHidden&&userData.bio){const bio=UI.el('div',`color:${th().text2};font-size:14px;padding:0 20px;line-height:1.6;margin-bottom:16px`);bio.textContent=userData.bio;inner.appendChild(bio);}
     const dets=[['العنوان',userData.title],['الدراسة',userData.study],['الجنس',({male:'ذكر',female:'أنثى'})[userData.gender]],['المدينة',userData.city]].filter(x=>x[1]);
     const ctc=userData.contact||{};
-    if(dets.length||ctc.email||ctc.phone){const dv=UI.el('div',`font-size:13px;color:${th().text2};line-height:1.9;margin-bottom:12px`);dets.forEach(([k,v])=>{const r=UI.el('div','');r.textContent=`${k}: ${v}`;dv.appendChild(r);});if(ctc.email){const r=UI.el('div','direction:ltr');r.textContent=ctc.email;dv.appendChild(r);}if(ctc.phone){const r=UI.el('div','direction:ltr');r.textContent=ctc.phone;dv.appendChild(r);}inner.appendChild(dv);}
+    if(!isHidden&&(dets.length||ctc.email||ctc.phone)){const dv=UI.el('div',`font-size:13px;color:${th().text2};line-height:1.9;margin-bottom:12px`);dets.forEach(([k,v])=>{const r=UI.el('div','');r.textContent=`${k}: ${v}`;dv.appendChild(r);});if(ctc.email){const r=UI.el('div','direction:ltr');r.textContent=ctc.email;dv.appendChild(r);}if(ctc.phone){const r=UI.el('div','direction:ltr');r.textContent=ctc.phone;dv.appendChild(r);}inner.appendChild(dv);}
     const mf=myFriends();
-    if(S.stories[_uUid]&&Object.keys(S.stories[_uUid]).length>0){const stSec=UI.el('div',`margin-bottom:16px;padding:12px;background:${th().card};border-radius:14px;border:1px solid ${th().border}`);const stHdr=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:10px`);stHdr.textContent='القصص';stSec.appendChild(stHdr);const stRow=UI.el('div','display:flex;gap:8px;overflow-x:auto;justify-content:center;scrollbar-width:none');Stories.getUserStories(_uUid,S.stories).forEach(s=>{const img=document.createElement('img');img.src=s.url||s.data;img.alt='قصة';img.loading='lazy';img.style.cssText='width:60px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid var(--accent);flex-shrink:0';img.addEventListener('click',()=>{Stories.markSeen(_uUid);openStoryViewer(_uUid);});stRow.appendChild(img);});stSec.appendChild(stRow);inner.appendChild(stSec);}
+    if(!isHidden&&S.stories[_uUid]&&Object.keys(S.stories[_uUid]).length>0){const stSec=UI.el('div',`margin-bottom:16px;padding:12px;background:${th().card};border-radius:14px;border:1px solid ${th().border}`);const stHdr=UI.el('div',`font-size:12px;color:${th().text2};font-weight:700;margin-bottom:10px`);stHdr.textContent='القصص';stSec.appendChild(stHdr);const stRow=UI.el('div','display:flex;gap:8px;overflow-x:auto;justify-content:center;scrollbar-width:none');Stories.getUserStories(_uUid,S.stories).forEach(s=>{const img=document.createElement('img');img.src=s.url||s.data;img.alt='قصة';img.loading='lazy';img.style.cssText='width:60px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid var(--accent);flex-shrink:0';img.addEventListener('click',()=>{Stories.markSeen(_uUid);openStoryViewer(_uUid);});stRow.appendChild(img);});stSec.appendChild(stRow);inner.appendChild(stSec);}
     else if(!mf.includes(u)&&u!==S.me&&S.stories[u]&&Object.keys(S.stories[u]).length>0){const locked=UI.el('div',`padding:8px 14px;background:${th().card2};border-radius:10px;color:${th().text3};font-size:12px;border:1px solid ${th().border};margin-bottom:12px`);locked.textContent='القصص متاحة للأصدقاء فقط';inner.appendChild(locked);}
     const btnRow=UI.el('div','display:flex;gap:8px;margin-top:16px');const msgBtn=UI.el('button','flex:1;padding:10px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer');msgBtn.innerHTML=UI.label('chat','رسالة');msgBtn.addEventListener('click',()=>go('dm',u));btnRow.appendChild(msgBtn);
     if(!mf.includes(u)&&u!==S.me){
@@ -2877,8 +2878,9 @@
     pTitle.textContent = 'المنشورات';
     pSec.appendChild(pTitle);
     if (hiddenP) {
-      const lk = UI.el('div',`padding:14px;text-align:center;background:${th().card2};border-radius:12px;color:${th().text3};font-size:12px;border:1px solid ${th().border}`);
-      lk.textContent = 'الحساب خاص — المنشورات تظهر للأصدقاء فقط';
+      pSec.innerHTML = '';
+      const lk = UI.el('div',`padding:22px 14px;text-align:center;color:${th().text2};font-size:14px;font-weight:700`);
+      lk.innerHTML = UI.icon('lock',22)+'<div style="margin-top:8px">هذا الحساب خاص</div>';
       pSec.appendChild(lk);
     } else if (!pUid) {
       const em = UI.el('div',`color:${th().text3};font-size:13px;padding:16px 0`);
@@ -3354,6 +3356,43 @@
   }
 
   /* ── إيماءات عامة: السحب من حافة الشاشة = رجوع، والسحب بين تبويبات الرئيسية ── */
+  /* الضغط على أي صورة شخصية يفتح الملف (أو يُغلق القصة المفتوحة أولاً) */
+  document.addEventListener('click',e=>{
+    const w=e.target&&e.target.closest?e.target.closest('[data-open-user]'):null;
+    if(!w||!S.me) return;
+    e.stopPropagation(); e.preventDefault();
+    const name=w.dataset.openUser;
+    const sv=document.getElementById('story-viewer-ov'); if(sv) sv.remove();
+    if(name===S.me){ go('profile'); return; }
+    go('userProfile',name);
+  },true);
+  /* لوحة المفاتيح: تقليص الشاشة للمساحة الظاهرة وإبقاء آخر رسالة ظاهرة فوق الكيبورد */
+  (function _keyboardFit(){
+    const isNearBottom=sc=>sc.scrollHeight-sc.scrollTop-sc.clientHeight<140;
+    const toBottom=()=>{const sc=document.getElementById('msg-scroll'); if(sc) sc.scrollTop=sc.scrollHeight;};
+    let wasNear=true;
+    const fit=()=>{
+      const vv=window.visualViewport; const app=document.getElementById('app');
+      if(!vv||!app) return;
+      const sc=document.getElementById('msg-scroll');
+      if(sc && wasNear) requestAnimationFrame(toBottom);
+      app.style.height=vv.height+'px';
+      window.scrollTo(0,0);
+    };
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',fit);
+      window.visualViewport.addEventListener('scroll',fit);
+    }
+    document.addEventListener('focusin',e=>{
+      if(!e.target||!e.target.closest||!e.target.closest('#chat-input-wrap')) return;
+      const sc=document.getElementById('msg-scroll'); wasNear=!sc||isNearBottom(sc);
+      setTimeout(()=>{fit(); toBottom();},300);
+    },true);
+    document.addEventListener('focusout',e=>{
+      if(!e.target||!e.target.closest||!e.target.closest('#chat-input-wrap')) return;
+      setTimeout(()=>{const app=document.getElementById('app'); if(app) app.style.height='';},300);
+    },true);
+  })();
   (function _globalGestures(){
     let gx=0,gy=0,gEdge=null,gOn=false,gT=0,gHoriz=false;
     // ترتيب الشريط السفلي كما يظهر (من اليمين لليسار)
