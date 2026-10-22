@@ -99,8 +99,8 @@ window.E2E = (function () {
     const FB = deps.FB;
     const store = deps.store;
 
-    // مفتاح إيقاف التشفير مؤقتاً: false → لا يُنشر أي مفتاح، والرسائل تُرسل كنص عادي
-    const E2E_ENABLED = false;
+    // مفتاح إيقاف التشفير مؤقتاً (من التطبيق فقط): false → لا يُنشر أي مفتاح، والرسائل تُرسل كنص عادي
+    const E2E_ENABLED = deps.enabled !== false;   // التطبيق يمرّر enabled:false مؤقتاً
 
     let _uid = null;
     let _dev = null;           // { id, kid, pub, priv:CryptoKey, created }
@@ -363,7 +363,7 @@ window.E2E = (function () {
   /* ── المثيل الافتراضي (يُهيّأ عند أول استخدام لأن FB يُحمَّل قبلنا) ── */
   let _inst = null;
   function inst() {
-    if (!_inst) _inst = create({ FB: window.FB, store: idbStore() });
+    if (!_inst) _inst = create({ FB: window.FB, store: idbStore(), enabled: false });
     return _inst;
   }
   const api = { create, b64, unb64 };
