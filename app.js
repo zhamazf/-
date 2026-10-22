@@ -3354,6 +3354,33 @@
   }
 
   /* ── إيماءات عامة: السحب من حافة الشاشة = رجوع، والسحب بين تبويبات الرئيسية ── */
+  /* لوحة المفاتيح: تقليص الشاشة للمساحة الظاهرة وإبقاء آخر رسالة ظاهرة فوق الكيبورد */
+  (function _keyboardFit(){
+    const isNearBottom=sc=>sc.scrollHeight-sc.scrollTop-sc.clientHeight<140;
+    const toBottom=()=>{const sc=document.getElementById('msg-scroll'); if(sc) sc.scrollTop=sc.scrollHeight;};
+    let wasNear=true;
+    const fit=()=>{
+      const vv=window.visualViewport; const app=document.getElementById('app');
+      if(!vv||!app) return;
+      const sc=document.getElementById('msg-scroll');
+      if(sc && wasNear) requestAnimationFrame(toBottom);
+      app.style.height=vv.height+'px';
+      window.scrollTo(0,0);
+    };
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',fit);
+      window.visualViewport.addEventListener('scroll',fit);
+    }
+    document.addEventListener('focusin',e=>{
+      if(!e.target||!e.target.closest||!e.target.closest('#chat-input-wrap')) return;
+      const sc=document.getElementById('msg-scroll'); wasNear=!sc||isNearBottom(sc);
+      setTimeout(()=>{fit(); toBottom();},300);
+    },true);
+    document.addEventListener('focusout',e=>{
+      if(!e.target||!e.target.closest||!e.target.closest('#chat-input-wrap')) return;
+      setTimeout(()=>{const app=document.getElementById('app'); if(app) app.style.height='';},300);
+    },true);
+  })();
   (function _globalGestures(){
     let gx=0,gy=0,gEdge=null,gOn=false,gT=0,gHoriz=false;
     // ترتيب الشريط السفلي كما يظهر (من اليمين لليسار)
