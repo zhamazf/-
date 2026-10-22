@@ -1731,14 +1731,14 @@
     const isM=['image','video','voice'].includes(m.type);
     const row=UI.el('div','display:flex;align-items:flex-end;gap:6px;margin-bottom:3px;padding:0 2px;animation:fadeUp .2s ease');
     row.setAttribute('data-row-id', m.id);
-    row.style.flexDirection=mine?'row-reverse':'row';
+    row.style.flexDirection=mine?'row':'row-reverse';
     if(isOpt) row.setAttribute('data-temp-id', m._tempId || m.id);
 
     if(m.deleted){
       const col2=UI.el('div','max-width:78%');
       const del=UI.el('div',`font-size:12px;color:${th().text3};font-style:italic;padding:7px 12px;border-radius:14px;background:${th().bubble};opacity:.7`);
       del.textContent='تم حذف هذه الرسالة';
-      const metaDel=UI.el('div',`font-size:10px;color:${th().text3};margin-top:2px;text-align:${mine?'left':'right'}`);
+      const metaDel=UI.el('div',`font-size:10px;color:${th().text3};margin-top:2px;text-align:${mine?'right':'left'}`);
       metaDel.textContent=UI.fmt(m.ts);
       col2.appendChild(del); col2.appendChild(metaDel); row.appendChild(col2); return row;
     }
@@ -1778,7 +1778,7 @@
     col.appendChild(bub); col.appendChild(metaRow);
 
     if(m.reactions&&Object.keys(m.reactions).length){
-      const rxBar=UI.el('div',`display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;justify-content:${mine?'flex-end':'flex-start'}`);
+      const rxBar=UI.el('div',`display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;justify-content:${mine?'flex-start':'flex-end'}`);
       Chat.parseReactions(m.reactions,S.meUid).forEach(r=>{
         const rb=UI.el('button',`padding:2px 7px;border-radius:12px;border:1px solid ${r.mine?'var(--accent)':th().border};background:${r.mine?'var(--acc22)':th().card2};font-size:13px;cursor:pointer;display:flex;align-items:center;gap:3px`);
         rb.title=r.uids.map(u=>_nameByUid(u)||u).join('، ');
