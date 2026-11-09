@@ -2867,7 +2867,7 @@
         if(tUid) FB.get(`friendRequests/${tUid}/${S.meUid}`).then(v=>{ if(v && slot.isConnected) paint('outgoing'); }).catch(()=>{});
       }
     }
-    else if(mf.includes(u)){const fr=UI.el('div','flex:1;text-align:center;padding:10px;color:#22c55e;font-size:13px;font-weight:700');fr.textContent='✓ صديق';btnRow.appendChild(fr);}
+    else if(mf.includes(u)){const fr=UI.el('button','flex:1;text-align:center;padding:10px;border:1px solid #22c55e;border-radius:12px;background:transparent;color:#22c55e;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer');fr.textContent='✓ صديق';fr.addEventListener('click',async()=>{const tUidF=_uidByName(u);if(!tUidF)return UI.toast('المستخدم غير موجود','error');if(!await UI.confirmDialog(`هل تريد إزالة ${u} من الأصدقاء؟`,{confirmText:'إزالة',danger:true}))return;const res=await Friends.removeFriend(S.meUid,tUidF);if(res.error)return UI.toast(res.error,'error');UI.toast('تمت الإزالة','info');renderScreen();});btnRow.appendChild(fr);}
     inner.appendChild(btnRow);
     // منشورات المستخدم — الحساب الخاص يظهر للأصدقاء فقط
     const isOwnP = u === S.me;
