@@ -1871,6 +1871,8 @@
 
   function _openContextMenu(m,mine,anchorEl){
     _closeCtx();
+    const host=anchorEl.parentElement||document.body;
+    if(host!==document.body)host.style.position='relative';
     const cPath=Chat.msgPath(S.screen,S.screen==='dm'?Chat.dmKey(S.meUid,_uidByName(S.activeId)||S.activeId):S.activeId);
     const W=window.innerWidth,H=window.innerHeight;
     const backdrop=UI.el('div','position:fixed;inset:0;z-index:979;background:rgba(0,0,0,.32);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:fadeUp .12s ease');
@@ -1879,7 +1881,7 @@
     document.body.appendChild(backdrop);
 
     /* شريط التفاعل: يطفو فوق الرسالة */
-    const bar=UI.el('div',`position:fixed;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:50px;padding:6px 8px;display:flex;gap:2px;box-shadow:0 8px 30px rgba(0,0,0,.28);max-width:${W-16}px`);
+    const bar=UI.el('div',`position:absolute;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:50px;padding:6px 8px;display:flex;gap:2px;box-shadow:0 8px 30px rgba(0,0,0,.28);max-width:min(340px,${W-24}px);white-space:nowrap`);
     bar.id='rx-picker';
     Chat.ALLOWED_REACTIONS.forEach((emoji,idx)=>{
       const has=!!(m.reactions&&m.reactions[emoji]&&m.reactions[emoji][S.meUid]);
@@ -1891,7 +1893,7 @@
     });
 
     /* قائمة الإجراءات */
-    const menu=UI.el('div',`position:fixed;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:18px;padding:6px;box-shadow:0 10px 36px rgba(0,0,0,.3);min-width:190px`);
+    const menu=UI.el('div',`position:absolute;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:18px;padding:6px;box-shadow:0 10px 36px rgba(0,0,0,.3);min-width:190px`);
     menu.id='ctx-menu';
     [{ico:'',lbl:'رد',fn:()=>{_replyTo={id:m.id,text:m.text,sender:m.sender,type:m.type};_showReplyBar();}},
      {ico:'',lbl:'تحويل',fn:()=>_openForwardPicker(m),show:!m.deleted&&m.type!=='poll'},
@@ -1907,31 +1909,15 @@
       btn.addEventListener('click',()=>{_closeCtx();fn();});
       menu.appendChild(btn);
     });
-    document.body.appendChild(bar);document.body.appendChild(menu);
+    host.appendChild(bar);host.appendChild(menu);
     try{menu.animate([{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'scale(1)'}],{duration:150,easing:'ease-out'});}catch(_){}
 
-    /* التموضع مثل واتساب: الشريط فوق الرسالة (أو تحتها إذا كانت قريبة من أعلى الشاشة)، والقائمة تحت الرسالة. يتحدث مع حركة الرسائل */
-    const _place=()=>{
-      if(!document.body.contains(bar))return;
-      /* الرسالة الأخيرة قد تُعاد رسمها (تحديث الحالة/الإرسال)، فنلحق العنصر الحي بدل القديم */
-      const _live=anchorEl.isConnected?anchorEl:((m&&m.id&&document.querySelector(`[data-msg-id="${m.id}"]`))||null);
-      if(!_live||!_live.isConnected){_closeCtx();return;}
-      const rect=_live.getBoundingClientRect();
-      const bw=bar.offsetWidth,bh=bar.offsetHeight,mw=menu.offsetWidth,mh=menu.offsetHeight;
-      const cx=rect.left+rect.width/2;
-      bar.style.left=Math.max(8,Math.min(W-bw-8,cx-bw/2))+'px';
-      let barTop=rect.top-bh-8,above=true;
-      if(barTop<64){barTop=rect.bottom+8;above=false;}
-      bar.style.top=barTop+'px';
-      let mTop=above?rect.bottom+8:barTop+bh+8;
-      if(mTop+mh>H-8)mTop=Math.max(8,H-mh-8);
-      menu.style.top=mTop+'px';
-      menu.style.left=Math.max(8,Math.min(W-mw-8,mine?rect.right-mw:rect.left))+'px';
-    };
-    try{const _sel=window.getSelection&&window.getSelection();if(_sel)_sel.removeAllRanges();}catch(_){}
-    _place();
-    const _tick=()=>{if(!document.getElementById('ctx-backdrop'))return;_place();requestAnimationFrame(_tick);};
-    requestAnimationFrame(_tick);
+    /* التموضع بالـCSS (بدون قياس الإحداثيات): الشريط يلتصق فوق الرسالة، أو تحتها إذا كانت قريبة من أعلى الشاشة، والقائمة تحتها */
+    const _below=anchorEl.getBoundingClientRect().top<150;
+    bar.style.left=mine?'auto':'0';bar.style.right=mine?'0':'auto';
+    bar.style[_below?'top':'bottom']='calc(100% + 6px)';bar.style[_below?'bottom':'top']='auto';
+    menu.style.left=mine?'auto':'0';menu.style.right=mine?'0':'auto';
+    menu.style.top=_below?'calc(100% + 72px)':'calc(100% + 6px)';
   }
 
   /* تفاعل سريع ❤️ بالنقر المزدوج على الرسالة */
