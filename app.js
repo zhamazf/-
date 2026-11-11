@@ -1910,17 +1910,24 @@
     document.body.appendChild(bar);document.body.appendChild(menu);
     try{menu.animate([{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'scale(1)'}],{duration:150,easing:'ease-out'});}catch(_){}
 
-    /* التموضع: الشريط فوق الرسالة، والقائمة تحتها (داخل حدود الشاشة) */
-    const rect=anchorEl.getBoundingClientRect();
-    const vTop=Math.max(rect.top,84),vBot=Math.min(rect.bottom,H-84);
-    const bw=bar.offsetWidth,bh=bar.offsetHeight,mw=menu.offsetWidth,mh=menu.offsetHeight;
-    const cx=rect.left+rect.width/2;
-    bar.style.left=Math.max(8,Math.min(W-bw-8,cx-bw/2))+'px';
-    bar.style.top=Math.max(64,vTop-bh-8)+'px';
-    let mTop=vBot+8; if(mTop+mh>H-8)mTop=Math.max(64,H-mh-8);
-    if(mTop<parseFloat(bar.style.top)+bh+4)mTop=Math.min(H-mh-8,parseFloat(bar.style.top)+bh+8);
-    menu.style.top=mTop+'px';
-    menu.style.left=Math.max(8,Math.min(W-mw-8,mine?rect.right-mw:rect.left))+'px';
+    /* التموضع مثل واتساب: الشريط فوق الرسالة (أو تحتها إذا كانت قريبة من أعلى الشاشة)، والقائمة تحت الرسالة. يتحدث مع حركة الرسائل */
+    const _place=()=>{
+      if(!document.body.contains(bar))return;
+      const rect=anchorEl.getBoundingClientRect();
+      const bw=bar.offsetWidth,bh=bar.offsetHeight,mw=menu.offsetWidth,mh=menu.offsetHeight;
+      const cx=rect.left+rect.width/2;
+      bar.style.left=Math.max(8,Math.min(W-bw-8,cx-bw/2))+'px';
+      let barTop=rect.top-bh-8,above=true;
+      if(barTop<64){barTop=rect.bottom+8;above=false;}
+      bar.style.top=barTop+'px';
+      let mTop=above?rect.bottom+8:barTop+bh+8;
+      if(mTop+mh>H-8)mTop=Math.max(8,H-mh-8);
+      menu.style.top=mTop+'px';
+      menu.style.left=Math.max(8,Math.min(W-mw-8,mine?rect.right-mw:rect.left))+'px';
+    };
+    _place();
+    const _tick=()=>{if(!document.getElementById('ctx-backdrop'))return;_place();requestAnimationFrame(_tick);};
+    requestAnimationFrame(_tick);
   }
 
   /* تفاعل سريع ❤️ بالنقر المزدوج على الرسالة */
