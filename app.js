@@ -1916,8 +1916,8 @@
 
     /* التموضع: الشريط فوق الرسالة دائماً، والقائمة تحتها دائماً. نضيف مساحة أسفل القائمة ونرفع الرسالة للمنتصف */
     const _sc=document.getElementById('msg-scroll');
-    if(_sc&&_sc.dataset.padB===undefined){_sc.dataset.padB=_sc.style.paddingBottom;_sc.style.paddingBottom='400px';}
-    try{anchorEl.scrollIntoView({block:'center'});}catch(_){}
+    if(_sc&&_sc.dataset.padB===undefined){_sc.dataset.padB=_sc.style.paddingBottom;_sc.style.paddingBottom='520px';}
+    if(_sc){const _cr=_sc.getBoundingClientRect();const _ar=anchorEl.getBoundingClientRect();_sc.scrollTop+=_ar.top-(_cr.top+170);}
     const _below=anchorEl.getBoundingClientRect().top<150;
     bar.style.left=mine?'auto':'0';bar.style.right=mine?'0':'auto';
     menu.style.left=mine?'auto':'0';menu.style.right=mine?'0':'auto';
