@@ -1867,6 +1867,8 @@
 
   function _closeCtx(){
     ['ctx-menu','rx-picker','ctx-backdrop'].forEach(id=>{const e=document.getElementById(id);if(e)e.remove();});
+    const _sc=document.getElementById('msg-scroll');
+    if(_sc&&_sc.dataset.padB!==undefined){_sc.style.paddingBottom=_sc.dataset.padB;delete _sc.dataset.padB;}
   }
 
   function _openContextMenu(m,mine,anchorEl){
@@ -1912,24 +1914,15 @@
     host.appendChild(bar);host.appendChild(menu);
     try{menu.animate([{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'scale(1)'}],{duration:150,easing:'ease-out'});}catch(_){}
 
-    /* التموضع: نرفع الرسالة للمنتصف، ثم الشريط فوقها والقائمة تحتها. إذا القائمة ما تكفي تحت، تطلع فوق الرسالة */
+    /* التموضع: الشريط فوق الرسالة دائماً، والقائمة تحتها دائماً. نضيف مساحة أسفل القائمة ونرفع الرسالة للمنتصف */
+    const _sc=document.getElementById('msg-scroll');
+    if(_sc&&_sc.dataset.padB===undefined){_sc.dataset.padB=_sc.style.paddingBottom;_sc.style.paddingBottom='400px';}
     try{anchorEl.scrollIntoView({block:'center'});}catch(_){}
-    const _r=anchorEl.getBoundingClientRect();
-    const _below=_r.top<150;
-    const _mh=menu.offsetHeight||340;
+    const _below=anchorEl.getBoundingClientRect().top<150;
     bar.style.left=mine?'auto':'0';bar.style.right=mine?'0':'auto';
     menu.style.left=mine?'auto':'0';menu.style.right=mine?'0':'auto';
-    if(_r.bottom+_mh>window.innerHeight-120){
-      /* القائمة تنزل كورقة ثابتة فوق شريط الكتابة، والشريط يبقى فوق الرسالة */
-      document.body.appendChild(menu);
-      menu.style.position='fixed';menu.style.top='auto';menu.style.bottom='120px';
-      menu.style.left=mine?'auto':'12px';menu.style.right=mine?'12px':'auto';
-      bar.style.top='auto';bar.style.bottom='calc(100% + 6px)';
-    }else{
-      menu.style.bottom='auto';
-      bar.style[_below?'top':'bottom']='calc(100% + 6px)';bar.style[_below?'bottom':'top']='auto';
-      menu.style.top=_below?'calc(100% + 72px)':'calc(100% + 6px)';
-    }
+    bar.style[_below?'top':'bottom']='calc(100% + 6px)';bar.style[_below?'bottom':'top']='auto';
+    menu.style.top=_below?'calc(100% + 72px)':'calc(100% + 6px)';
   }
 
   /* تفاعل سريع ❤️ بالنقر المزدوج على الرسالة */
