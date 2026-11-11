@@ -1913,7 +1913,10 @@
     /* التموضع مثل واتساب: الشريط فوق الرسالة (أو تحتها إذا كانت قريبة من أعلى الشاشة)، والقائمة تحت الرسالة. يتحدث مع حركة الرسائل */
     const _place=()=>{
       if(!document.body.contains(bar))return;
-      const rect=anchorEl.getBoundingClientRect();
+      /* الرسالة الأخيرة قد تُعاد رسمها (تحديث الحالة/الإرسال)، فنلحق العنصر الحي بدل القديم */
+      const _live=(m&&m.id&&document.querySelector(`[data-msg-id="${m.id}"]`))||anchorEl;
+      if(!_live||!_live.isConnected){_closeCtx();return;}
+      const rect=_live.getBoundingClientRect();
       const bw=bar.offsetWidth,bh=bar.offsetHeight,mw=menu.offsetWidth,mh=menu.offsetHeight;
       const cx=rect.left+rect.width/2;
       bar.style.left=Math.max(8,Math.min(W-bw-8,cx-bw/2))+'px';
