@@ -1914,7 +1914,7 @@
     const _place=()=>{
       if(!document.body.contains(bar))return;
       /* الرسالة الأخيرة قد تُعاد رسمها (تحديث الحالة/الإرسال)، فنلحق العنصر الحي بدل القديم */
-      const _live=(m&&m.id&&document.querySelector(`[data-msg-id="${m.id}"]`))||anchorEl;
+      const _live=anchorEl.isConnected?anchorEl:((m&&m.id&&document.querySelector(`[data-msg-id="${m.id}"]`))||null);
       if(!_live||!_live.isConnected){_closeCtx();return;}
       const rect=_live.getBoundingClientRect();
       const bw=bar.offsetWidth,bh=bar.offsetHeight,mw=menu.offsetWidth,mh=menu.offsetHeight;
