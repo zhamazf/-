@@ -1415,6 +1415,7 @@
   /* ═══════════════════════════════════════════════════════════
      MESSAGES
   ═══════════════════════════════════════════════════════════ */
+  function _bgCss(v){ return (typeof v==='string' && /^(data:|https?:)/.test(v)) ? `url("${v}")` : v; }
   function buildMsgsArea(){
     const bg=UI.getChatBgs()[chatId()]||th().bg;
 
@@ -1437,7 +1438,7 @@
     });
     wrapper.appendChild(pinnedBar);
 
-    const scroll=UI.el('div',`flex:1;overflow-y:auto;padding:10px 10px 4px;background:${bg};background-size:cover;background-position:center;-webkit-overflow-scrolling:touch`); scroll.id='msg-scroll';
+    const scroll=UI.el('div',`flex:1;overflow-y:auto;padding:10px 10px 4px;background:${_bgCss(bg)};background-size:cover;background-position:center;-webkit-overflow-scrolling:touch`); scroll.id='msg-scroll';
 
     // v2: زر "تحميل رسائل أقدم"
     const loadMoreBtn=UI.el('button',`display:none;margin:6px auto;padding:6px 18px;border:1px solid ${th().border};border-radius:20px;background:${th().card2};color:${th().text2};font-size:12px;font-family:inherit;cursor:pointer`);
@@ -3156,7 +3157,7 @@
     const scroll = document.getElementById('msg-scroll');
     if (scroll) {
       const bg = UI.getChatBgs()[chatId()] || th().bg;
-      scroll.style.background = bg;
+      scroll.style.background = _bgCss(bg);
     }
     const bubbles = document.querySelectorAll('.bubble');
     const bc = UI.getBubbleColors()[chatId()] || 'linear-gradient(135deg,var(--accent),var(--accent2))';
