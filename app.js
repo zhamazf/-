@@ -1763,7 +1763,7 @@
     const bubRadius=m.replyTo?(mine?'0 18px 4px 18px':'18px 0 18px 18px'):(mine?'18px 18px 4px 18px':'18px 18px 18px 4px');
     const bub=UI.el('div','');
     bub.className='bubble '+(mine?'mine':'theirs');
-    bub.style.cssText=`padding:${isM?'5px':'9px 13px'};border-radius:${bubRadius};background:${mine?bc:th().bubble};color:${mine?'#06140b':th().text};font-size:14px;line-height:1.5;box-shadow:${mine?'0 2px 8px rgba(59,158,240,.25)':'0 1px 4px rgba(0,0,0,.08)'}`;
+    bub.style.cssText=`-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:${isM?'5px':'9px 13px'};border-radius:${bubRadius};background:${mine?bc:th().bubble};color:${mine?'#06140b':th().text};font-size:14px;line-height:1.5;box-shadow:${mine?'0 2px 8px rgba(59,158,240,.25)':'0 1px 4px rgba(0,0,0,.08)'}`;
     bub.setAttribute('data-msg-id', m.id);
 
     if(m.type==='text'){const span=document.createElement('span');span.style.cssText='word-break:break-word;white-space:pre-wrap;line-height:1.55';span.textContent=m.text;bub.appendChild(span);}
@@ -1795,7 +1795,7 @@
     row.appendChild(col);
 
     let _pressTimer=null;
-    const _showCtx=e=>{e.preventDefault();e.stopPropagation();_openContextMenu(m,mine,col);};
+    const _showCtx=e=>{e.preventDefault();e.stopPropagation();_openContextMenu(m,mine,bub);};
     bub.addEventListener('contextmenu',_showCtx);
     bub.addEventListener('touchstart',()=>{_pressTimer=setTimeout(()=>_showCtx({preventDefault:()=>{},stopPropagation:()=>{}}),500);},{passive:true});
     bub.addEventListener('touchend',()=>clearTimeout(_pressTimer));
@@ -1867,10 +1867,14 @@
 
   function _closeCtx(){
     ['ctx-menu','rx-picker','ctx-backdrop'].forEach(id=>{const e=document.getElementById(id);if(e)e.remove();});
+    const _sc=document.getElementById('msg-scroll');
+    if(_sc&&_sc.dataset.padB!==undefined){_sc.style.paddingBottom=_sc.dataset.padB;delete _sc.dataset.padB;}
   }
 
   function _openContextMenu(m,mine,anchorEl){
     _closeCtx();
+    const host=anchorEl.parentElement||document.body;
+    if(host!==document.body)host.style.position='relative';
     const cPath=Chat.msgPath(S.screen,S.screen==='dm'?Chat.dmKey(S.meUid,_uidByName(S.activeId)||S.activeId):S.activeId);
     const W=window.innerWidth,H=window.innerHeight;
     const backdrop=UI.el('div','position:fixed;inset:0;z-index:979;background:rgba(0,0,0,.32);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:fadeUp .12s ease');
@@ -1879,7 +1883,7 @@
     document.body.appendChild(backdrop);
 
     /* شريط التفاعل: يطفو فوق الرسالة */
-    const bar=UI.el('div',`position:fixed;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:50px;padding:6px 8px;display:flex;gap:2px;box-shadow:0 8px 30px rgba(0,0,0,.28);max-width:${W-16}px`);
+    const bar=UI.el('div',`position:absolute;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:50px;padding:6px 8px;display:flex;gap:2px;box-shadow:0 8px 30px rgba(0,0,0,.28);max-width:min(340px,${W-24}px);white-space:nowrap`);
     bar.id='rx-picker';
     Chat.ALLOWED_REACTIONS.forEach((emoji,idx)=>{
       const has=!!(m.reactions&&m.reactions[emoji]&&m.reactions[emoji][S.meUid]);
@@ -1891,7 +1895,7 @@
     });
 
     /* قائمة الإجراءات */
-    const menu=UI.el('div',`position:fixed;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:18px;padding:6px;box-shadow:0 10px 36px rgba(0,0,0,.3);min-width:190px`);
+    const menu=UI.el('div',`position:absolute;z-index:981;background:${th().card};border:1px solid ${th().border};border-radius:18px;padding:6px;box-shadow:0 10px 36px rgba(0,0,0,.3);min-width:190px`);
     menu.id='ctx-menu';
     [{ico:'',lbl:'رد',fn:()=>{_replyTo={id:m.id,text:m.text,sender:m.sender,type:m.type};_showReplyBar();}},
      {ico:'',lbl:'تحويل',fn:()=>_openForwardPicker(m),show:!m.deleted&&m.type!=='poll'},
@@ -1907,29 +1911,29 @@
       btn.addEventListener('click',()=>{_closeCtx();fn();});
       menu.appendChild(btn);
     });
-    document.body.appendChild(bar);document.body.appendChild(menu);
+    host.appendChild(bar);host.appendChild(menu);
     try{menu.animate([{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'scale(1)'}],{duration:150,easing:'ease-out'});}catch(_){}
 
-    /* التموضع: الشريط فوق الرسالة، والقائمة تحتها (داخل حدود الشاشة) */
-    const rect=anchorEl.getBoundingClientRect();
-    const vTop=Math.max(rect.top,84),vBot=Math.min(rect.bottom,H-84);
-    const bw=bar.offsetWidth,bh=bar.offsetHeight,mw=menu.offsetWidth,mh=menu.offsetHeight;
-    const cx=rect.left+rect.width/2;
-    bar.style.left=Math.max(8,Math.min(W-bw-8,cx-bw/2))+'px';
-    bar.style.top=Math.max(64,vTop-bh-8)+'px';
-    let mTop=vBot+8; if(mTop+mh>H-8)mTop=Math.max(64,H-mh-8);
-    if(mTop<parseFloat(bar.style.top)+bh+4)mTop=Math.min(H-mh-8,parseFloat(bar.style.top)+bh+8);
-    menu.style.top=mTop+'px';
-    menu.style.left=Math.max(8,Math.min(W-mw-8,mine?rect.right-mw:rect.left))+'px';
+    /* التموضع: الشريط فوق الرسالة دائماً، والقائمة تحتها دائماً. نضيف مساحة أسفل القائمة ونرفع الرسالة للمنتصف */
+    const _sc=document.getElementById('msg-scroll');
+    if(_sc&&_sc.dataset.padB===undefined){_sc.dataset.padB=_sc.style.paddingBottom;_sc.style.paddingBottom='520px';}
+    if(_sc){const _cr=_sc.getBoundingClientRect();const _ar=anchorEl.getBoundingClientRect();_sc.scrollTop+=_ar.top-(_cr.top+170);}
+    const _below=anchorEl.getBoundingClientRect().top<150;
+    bar.style.left=mine?'auto':'0';bar.style.right=mine?'0':'auto';
+    menu.style.left=mine?'auto':'0';menu.style.right=mine?'0':'auto';
+    bar.style[_below?'top':'bottom']='calc(100% + 6px)';bar.style[_below?'bottom':'top']='auto';
+    menu.style.top=_below?'calc(100% + 72px)':'calc(100% + 6px)';
   }
 
   /* تفاعل سريع ❤️ بالنقر المزدوج على الرسالة */
-  function _quickReact(m,bub){
+  async function _quickReact(m,bub){
     if(!m||!m.id||m.deleted)return;
     const cPath=Chat.msgPath(S.screen,S.screen==='dm'?Chat.dmKey(S.meUid,_uidByName(S.activeId)||S.activeId):S.activeId);
     const has=!!(m.reactions&&m.reactions['❤️']&&m.reactions['❤️'][S.meUid]);
-    has?Chat.removeReaction(cPath,m.id,S.meUid,'❤️'):Chat.addReaction(cPath,m.id,S.meUid,'❤️');
-    if(!has){
+    if(has)return; /* النقر المزدوج يضيف فقط ولا يشيل */
+    const res=await Chat.addReaction(cPath,m.id,S.meUid,'❤️');
+    if(res&&res.error){UI.toast(res.error,'error');return;}
+    {
       const r=bub.getBoundingClientRect();
       const h=UI.el('div',`position:fixed;z-index:985;left:${r.left+r.width/2-20}px;top:${r.top+r.height/2-20}px;font-size:40px;line-height:1;pointer-events:none`);
       h.textContent='❤️';document.body.appendChild(h);
