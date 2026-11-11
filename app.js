@@ -1920,8 +1920,11 @@
     bar.style.left=mine?'auto':'0';bar.style.right=mine?'0':'auto';
     menu.style.left=mine?'auto':'0';menu.style.right=mine?'0':'auto';
     if(_r.bottom+_mh>window.innerHeight-120){
-      menu.style.top='auto';menu.style.bottom='calc(100% + 6px)';
-      bar.style.top='auto';bar.style.bottom=`calc(100% + ${_mh+12}px)`;
+      /* القائمة تنزل كورقة ثابتة فوق شريط الكتابة، والشريط يبقى فوق الرسالة */
+      document.body.appendChild(menu);
+      menu.style.position='fixed';menu.style.top='auto';menu.style.bottom='120px';
+      menu.style.left=mine?'auto':'12px';menu.style.right=mine?'12px':'auto';
+      bar.style.top='auto';bar.style.bottom='calc(100% + 6px)';
     }else{
       menu.style.bottom='auto';
       bar.style[_below?'top':'bottom']='calc(100% + 6px)';bar.style[_below?'bottom':'top']='auto';
