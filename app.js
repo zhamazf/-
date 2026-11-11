@@ -1795,7 +1795,7 @@
     row.appendChild(col);
 
     let _pressTimer=null;
-    const _showCtx=e=>{e.preventDefault();e.stopPropagation();_openContextMenu(m,mine,col);};
+    const _showCtx=e=>{e.preventDefault();e.stopPropagation();_openContextMenu(m,mine,bub);};
     bub.addEventListener('contextmenu',_showCtx);
     bub.addEventListener('touchstart',()=>{_pressTimer=setTimeout(()=>_showCtx({preventDefault:()=>{},stopPropagation:()=>{}}),500);},{passive:true});
     bub.addEventListener('touchend',()=>clearTimeout(_pressTimer));
@@ -1924,12 +1924,14 @@
   }
 
   /* تفاعل سريع ❤️ بالنقر المزدوج على الرسالة */
-  function _quickReact(m,bub){
+  async function _quickReact(m,bub){
     if(!m||!m.id||m.deleted)return;
     const cPath=Chat.msgPath(S.screen,S.screen==='dm'?Chat.dmKey(S.meUid,_uidByName(S.activeId)||S.activeId):S.activeId);
     const has=!!(m.reactions&&m.reactions['❤️']&&m.reactions['❤️'][S.meUid]);
-    has?Chat.removeReaction(cPath,m.id,S.meUid,'❤️'):Chat.addReaction(cPath,m.id,S.meUid,'❤️');
-    if(!has){
+    if(has)return; /* النقر المزدوج يضيف فقط ولا يشيل */
+    const res=await Chat.addReaction(cPath,m.id,S.meUid,'❤️');
+    if(res&&res.error){UI.toast(res.error,'error');return;}
+    {
       const r=bub.getBoundingClientRect();
       const h=UI.el('div',`position:fixed;z-index:985;left:${r.left+r.width/2-20}px;top:${r.top+r.height/2-20}px;font-size:40px;line-height:1;pointer-events:none`);
       h.textContent='❤️';document.body.appendChild(h);
