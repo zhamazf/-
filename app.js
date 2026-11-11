@@ -1912,12 +1912,21 @@
     host.appendChild(bar);host.appendChild(menu);
     try{menu.animate([{opacity:0,transform:'scale(.92)'},{opacity:1,transform:'scale(1)'}],{duration:150,easing:'ease-out'});}catch(_){}
 
-    /* التموضع بالـCSS (بدون قياس الإحداثيات): الشريط يلتصق فوق الرسالة، أو تحتها إذا كانت قريبة من أعلى الشاشة، والقائمة تحتها */
-    const _below=anchorEl.getBoundingClientRect().top<150;
+    /* التموضع: نرفع الرسالة للمنتصف، ثم الشريط فوقها والقائمة تحتها. إذا القائمة ما تكفي تحت، تطلع فوق الرسالة */
+    try{anchorEl.scrollIntoView({block:'center'});}catch(_){}
+    const _r=anchorEl.getBoundingClientRect();
+    const _below=_r.top<150;
+    const _mh=menu.offsetHeight||340;
     bar.style.left=mine?'auto':'0';bar.style.right=mine?'0':'auto';
-    bar.style[_below?'top':'bottom']='calc(100% + 6px)';bar.style[_below?'bottom':'top']='auto';
     menu.style.left=mine?'auto':'0';menu.style.right=mine?'0':'auto';
-    menu.style.top=_below?'calc(100% + 72px)':'calc(100% + 6px)';
+    if(_r.bottom+_mh>window.innerHeight-120){
+      menu.style.top='auto';menu.style.bottom='calc(100% + 6px)';
+      bar.style.top='auto';bar.style.bottom=`calc(100% + ${_mh+12}px)`;
+    }else{
+      menu.style.bottom='auto';
+      bar.style[_below?'top':'bottom']='calc(100% + 6px)';bar.style[_below?'bottom':'top']='auto';
+      menu.style.top=_below?'calc(100% + 72px)':'calc(100% + 6px)';
+    }
   }
 
   /* تفاعل سريع ❤️ بالنقر المزدوج على الرسالة */
