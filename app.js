@@ -1763,7 +1763,7 @@
     const bubRadius=m.replyTo?(mine?'0 18px 4px 18px':'18px 0 18px 18px'):(mine?'18px 18px 4px 18px':'18px 18px 18px 4px');
     const bub=UI.el('div','');
     bub.className='bubble '+(mine?'mine':'theirs');
-    bub.style.cssText=`padding:${isM?'5px':'9px 13px'};border-radius:${bubRadius};background:${mine?bc:th().bubble};color:${mine?'#06140b':th().text};font-size:14px;line-height:1.5;box-shadow:${mine?'0 2px 8px rgba(59,158,240,.25)':'0 1px 4px rgba(0,0,0,.08)'}`;
+    bub.style.cssText=`-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;padding:${isM?'5px':'9px 13px'};border-radius:${bubRadius};background:${mine?bc:th().bubble};color:${mine?'#06140b':th().text};font-size:14px;line-height:1.5;box-shadow:${mine?'0 2px 8px rgba(59,158,240,.25)':'0 1px 4px rgba(0,0,0,.08)'}`;
     bub.setAttribute('data-msg-id', m.id);
 
     if(m.type==='text'){const span=document.createElement('span');span.style.cssText='word-break:break-word;white-space:pre-wrap;line-height:1.55';span.textContent=m.text;bub.appendChild(span);}
@@ -1925,6 +1925,7 @@
       menu.style.top=mTop+'px';
       menu.style.left=Math.max(8,Math.min(W-mw-8,mine?rect.right-mw:rect.left))+'px';
     };
+    try{const _sel=window.getSelection&&window.getSelection();if(_sel)_sel.removeAllRanges();}catch(_){}
     _place();
     const _tick=()=>{if(!document.getElementById('ctx-backdrop'))return;_place();requestAnimationFrame(_tick);};
     requestAnimationFrame(_tick);
